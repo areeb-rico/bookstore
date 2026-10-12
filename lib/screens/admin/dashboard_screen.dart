@@ -1,0 +1,324 @@
+import 'package:flutter/material.dart';
+import '../../models/book.dart';
+import '../user_session.dart';
+
+class DashboardScreen extends StatefulWidget {
+  final List<Book> allBooks;
+  final List<Order> orders;
+
+  const DashboardScreen({
+    super.key,
+    required this.allBooks,
+    required this.orders,
+  });
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  int get _books => widget.allBooks.length;
+  int get _users => UserSession.users.length;
+  int get _orders => widget.orders.length;
+  double get _revenue =>
+      widget.orders.fold(0.0, (sum, o) => sum + o.total);
+
+  List<Map<String, dynamic>> get _recent => widget.orders
+      .take(3)
+      .map(
+        (o) => {
+          'id': o.id,
+          'name': o.shippingAddress,
+          'items': o.items.length,
+          'price': o.total.toStringAsFixed(2),
+          'status': o.status,
+        },
+      )
+      .toList();
+
+  Future<void> _nav(String route) async {
+    await Navigator.pushNamed(context, route);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _toast(String m) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(m), duration: const Duration(seconds: 1)),
+    );
+  }
+
+  Future<void> _logout() async {
+    var ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You will be signed out of Margin Admin.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) _toast('Logged out');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F1E8),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              color: const Color(0xFF1F3A2E),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MARGIN ADMIN',
+                        style: TextStyle(
+                          color: Colors.green.shade200,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Dashboard',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    onPressed: _logout,
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                color: const Color(0xFF1F3A2E),
+                onRefresh: () async {
+                  await Future.delayed(const Duration(milliseconds: 600));
+                  setState(() {});
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          _stat('$_books', 'Books in catalog', '+24 this week'),
+                          const SizedBox(width: 12),
+                          _stat(
+                            '$_users',
+                            'Registered users',
+                            '+131 this week',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _stat('$_orders', 'Orders', '18 pending'),
+                          const SizedBox(width: 12),
+                          _stat(
+                            '\$${(_revenue / 1000).toStringAsFixed(1)}k',
+                            'Revenue (mo)',
+                            '+9% vs last',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          _action(
+                            Icons.menu_book,
+                            'Manage books',
+                            () => _nav('/manage-books'),
+                          ),
+                          const SizedBox(width: 12),
+                          _action(
+                            Icons.people,
+                            'Manage users',
+                            () => _nav('/manage-users'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _action(
+                            Icons.shopping_cart,
+                            'Manage orders',
+                            () => _nav('/manage-orders'),
+                          ),
+                          const SizedBox(width: 12),
+                          _action(
+                            Icons.bar_chart,
+                            'Reports',
+                            () => _toast('Reports opened'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Recent orders',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (widget.orders.isEmpty)
+                        const Center(
+                          child: Text(
+                            'No orders yet',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      else
+                        ..._recent.map(
+                          (o) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _orderRow(o),
+                          ),
+                        ),
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stat(String v, String l, String s) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            v,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1F3A2E),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(l, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const SizedBox(height: 8),
+          Text(
+            s,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _action(IconData i, String l, VoidCallback onTap) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(i, size: 18, color: const Color(0xFF1F3A2E)),
+            const SizedBox(width: 8),
+            Text(
+              l,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _orderRow(Map<String, dynamic> o) {
+    var s = o['status'] as String;
+    var c = s == 'Shipped'
+        ? Colors.blue
+        : s == 'Delivered'
+        ? Colors.green
+        : Colors.orange;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${o['id']} · ${o['name']}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${o['items']} items · \$${o['price']}',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+              ),
+            ],
+          ),
+          Text(
+            s,
+            style: TextStyle(
+              color: c,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
