@@ -56,6 +56,9 @@ app.*.map.json
 # Owner-operated Firebase setup helper; not needed to build or run the app
 /tools/firebase_setup.cjs
 
+# Local Firebase emulator configuration
+/firebase.emulators.json
+
 # Local editor/agent settings and scratch files
 /.vscode/
 /.codex/
