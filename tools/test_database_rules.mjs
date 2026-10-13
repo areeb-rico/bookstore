@@ -45,7 +45,14 @@ async function denied(label, path, method, value, auth, query) {
 }
 
 const rules = JSON.parse(await readFile(new URL('../database.rules.json', import.meta.url), 'utf8'));
-const catalog = JSON.parse(await readFile(new URL('../fixtures/catalog.json', import.meta.url), 'utf8'));
+// Minimal synthetic record keeps rule checks independent of the local sample catalog.
+const catalog = {
+  '1': {
+    title: 'Rules Test Book', author: 'Test Author', category: 'Fiction',
+    imageUrl: 'https://example.test/book.jpg', description: 'Book used for rule checks.',
+    price: 12.99, rating: 4.8, releaseDate: '1970-01-01T00:00:00.000',
+  },
+};
 const ownerUid = '6W2W5WzGMiWG6580Q5ET4iS4y903';
 const profile = uid => ({ uid, name: uid === 'alice' ? 'Alice' : 'Reader', email: `${uid}@example.test`, phone: '03001234567', role: 'Customer', createdAt: '2026-10-13' });
 const flags = { admin: false, disabled: false, removed: false };

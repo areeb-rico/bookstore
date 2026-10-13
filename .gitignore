@@ -52,6 +52,7 @@ app.*.map.json
 /docs/
 /App-BookStore.doc
 /plans/
+/fixtures/
 
 # Owner-operated Firebase setup helper; not needed to build or run the app
 /tools/firebase_setup.cjs

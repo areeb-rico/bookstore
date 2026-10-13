@@ -60,7 +60,6 @@ firebase deploy --only database --project bookstore-fe6f2
 - `lib/screens/notifications.dart`: live order inbox with read acknowledgements.
 - `lib/screens`: customer flows and admin screens.
 - `database.rules.json`: owner isolation and administrator permissions.
-- `fixtures/catalog.json`: optional sample catalog for an empty development DB.
 - `test`: controller, account isolation, order and login UI tests.
 - `tools/test_database_rules.mjs`: local demo-emulator rule checks.
 
@@ -74,7 +73,7 @@ Authentication identities, registration profiles and orders remain. Permanent
 Auth deletion is an owner action in Firebase Console. Phases 2/3 have not been tested;
 the user requested a single combined verification after implementation.
 
-Detailed documentation, planning notes and the original requirements brief are
+Detailed documentation, planning notes, sample catalog and the original requirements brief are
 kept locally and excluded from version control. Automated tests use a local
 demo emulator. The
 owner-authorized live setup deployed database rules, populated the catalog and
