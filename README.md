@@ -16,14 +16,15 @@ Phase 3 adds reviewed Cash on Delivery checkout, delivery contact snapshots,
 database-validated integer-cent totals, versioned carts, stable order retries and
 in-app order notifications.
 Checkout selects saved cards and offers **Create payment method** when needed.
-See [payment methods](docs/PAYMENT_METHODS.md). Bank charges are not integrated.
+Only the card brand, last four digits and expiry are saved. Bank charges are not integrated.
 Live Firebase setup is applied; device verification is tracked separately from
-local checks. See [Firebase setup](docs/FIREBASE_SETUP.md).
+local checks.
 
 ## Run locally
 
-Requires Flutter with Dart 3.12.2 or newer, Android SDK (for Android), and the
-Firebase configuration described in [Firebase setup](docs/FIREBASE_SETUP.md).
+Requires Flutter with Dart 3.12.2 or newer and Android SDK (for Android).
+Firebase configuration is included for the existing `bookstore-fe6f2` project.
+Email/Password Authentication and Realtime Database are used on the Spark plan.
 
 ```powershell
 flutter pub get
@@ -36,6 +37,13 @@ Android and iOS Firebase options are supplied. Web and desktop require their
 own Firebase configuration before launching. The old hardcoded administrator
 credentials have been removed: use the selected verified owner account, or a
 verified account granted a bookstore admin role through protected database flags.
+
+Database rules can be deployed with the Firebase CLI after signing in to an
+account with access to the project:
+
+```powershell
+firebase deploy --only database --project bookstore-fe6f2
+```
 
 ## Structure
 
@@ -66,7 +74,8 @@ Authentication identities, registration profiles and orders remain. Permanent
 Auth deletion is an owner action in Firebase Console. Phases 2/3 have not been tested;
 the user requested a single combined verification after implementation.
 
-`App-BookStore.doc` is the original requirements brief; it is not the final
-implementation report. Automated tests use a local demo emulator. The
+Detailed documentation, planning notes and the original requirements brief are
+kept locally and excluded from version control. Automated tests use a local
+demo emulator. The
 owner-authorized live setup deployed database rules, populated the catalog and
 promoted the selected existing account on 13 October 2026.

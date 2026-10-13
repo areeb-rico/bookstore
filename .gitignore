@@ -48,10 +48,9 @@ app.*.map.json
 # Claude Code local config
 .claude/
 
-# Local planning, phase progress and build records (keep on disk)
-/docs/IMPLEMENTATION_PLAN.md
-/docs/PHASE_*.md
-/docs/ANDROID_BUILD.md
+# Local documentation, requirements and planning (keep on disk)
+/docs/
+/App-BookStore.doc
 /plans/
 
 # Owner-operated Firebase setup helper; not needed to build or run the app
@@ -69,11 +68,28 @@ app.*.map.json
 *.bak
 *.orig
 *.rej
+*.old
+*.save
+
+# Local reports, screenshots, backups and crash dumps
+/reports/
+/test-results/
+/screenshots/
+/captures/
+/backups/
+*.hprof
+*.stackdump
+*.dmp
 
 # Dependencies and distributable build output
 **/node_modules/
 *.apk
 *.aab
+/dist/
+/out/
+**/.gradle/
+/.fvm/flutter_sdk/
+/.fvm/versions/
 
 # Private environment files and signing/service-account credentials
 .env
