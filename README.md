@@ -5,7 +5,7 @@ Firebase Authentication and Firebase Realtime Database.
 
 ## Implementation status
 
-Work is divided into five phases in [the implementation plan](docs/IMPLEMENTATION_PLAN.md).
+Implementation currently covers the first three phases.
 Phase 1 adds persistent catalog, per-account cart/wishlist, owned order history,
 atomic Cash on Delivery checkout and protected administrator access.
 Phase 2 adds persistent profiles/addresses/preferences/payment methods/reviews,
@@ -14,7 +14,7 @@ management. The project stays on free services with no billing upgrade.
 Combined verification is deferred until implementation is complete.
 Phase 3 adds reviewed Cash on Delivery checkout, delivery contact snapshots,
 database-validated integer-cent totals, versioned carts, stable order retries and
-in-app order notifications. See [Phase 3](docs/PHASE_3.md).
+in-app order notifications.
 Checkout selects saved cards and offers **Create payment method** when needed.
 See [payment methods](docs/PAYMENT_METHODS.md). Bank charges are not integrated.
 Live Firebase setup is applied; device verification is tracked separately from

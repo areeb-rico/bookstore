@@ -127,7 +127,7 @@ is older. Firebase CLI selects `java` from `PATH`.
 - Admin user management uses Spark database rules and does not depend on Cloud
   Functions. The latest free-plan rules were reported released successfully;
   a separate read-back confirmed the exact local match after the CLI shutdown error.
-- Combined verification is deferred per user instruction. See [Phase 2](PHASE_2.md).
+- Combined verification is deferred per user instruction.
 - Checkout offers Cash on Delivery and saved-card selection, with creation from
   checkout or profile. No bank/provider charge is processed. See
   [payment methods](PAYMENT_METHODS.md).

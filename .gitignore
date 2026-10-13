@@ -47,3 +47,42 @@ app.*.map.json
 
 # Claude Code local config
 .claude/
+
+# Local planning, phase progress and build records (keep on disk)
+/docs/IMPLEMENTATION_PLAN.md
+/docs/PHASE_*.md
+/docs/ANDROID_BUILD.md
+/plans/
+
+# Owner-operated Firebase setup helper; not needed to build or run the app
+/tools/firebase_setup.cjs
+
+# Local editor/agent settings and scratch files
+/.vscode/
+/.codex/
+/.agents/
+/tmp/
+/temp/
+**/__pycache__/
+.pytest_cache/
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Dependencies and distributable build output
+**/node_modules/
+*.apk
+*.aab
+
+# Private environment files and signing/service-account credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+**/service-account*.json
+**/serviceAccount*.json
+**/*-firebase-adminsdk-*.json
+**/key.properties
+*.jks
+*.keystore
