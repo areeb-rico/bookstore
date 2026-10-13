@@ -71,8 +71,9 @@ class NotificationsScreen extends StatelessWidget {
                     ),
                   ),
                 Text(
-                  'Total: \$${current.total.toStringAsFixed(2)} • Cash on Delivery',
+                  'Total: \$${current.total.toStringAsFixed(2)} • ${current.paymentLabel}',
                 ),
+                if (current.cardLabel != null) Text(current.cardLabel!),
               ],
             );
           },

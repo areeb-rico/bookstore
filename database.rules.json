@@ -160,8 +160,8 @@
       ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (((root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))) || (query.orderByChild === 'userId' && query.equalTo === auth.uid))",
       "$orderId": {
         ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (((root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))) || data.child('userId').val() === auth.uid || $orderId.beginsWith(auth.uid + '-'))",
-        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && !data.exists() && newData.child('userId').val() === auth.uid && newData.child('status').val() === 'Ordered' && newData.child('paymentMethod').val() === 'Cash' && $orderId === auth.uid + '-' + newData.child('cartEpoch').val() + '-' + newData.child('cartRevision').val() && newData.child('cartRevision').val() === (root.child('customerData').child(auth.uid).child('cart').child('_version').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_version').val() : 0) && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_version').val() === newData.child('cartRevision').val() + 1 && newData.child('cartEpoch').val() === (root.child('customerData').child(auth.uid).child('cart').child('_epoch').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_epoch').val() : 'legacy') && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_epoch').val() === newData.child('cartEpoch').val()",
-        ".validate": "data.exists() || (newData.hasChildren(['userId','items','total','shippingAddress','deliveryContact','status','date','paymentMethod','schemaVersion','subtotalMinor','totalMinor','promoCode','cartRevision','cartEpoch']) && newData.child('schemaVersion').val() === 2 && newData.child('shippingAddress').val() === newData.child('deliveryContact/address').val() + ', ' + newData.child('deliveryContact/area').val() + ', ' + newData.child('deliveryContact/city').val())",
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && !data.exists() && newData.child('userId').val() === auth.uid && newData.child('status').val() === 'Ordered' && (newData.child('paymentMethod').val() === 'Cash' || newData.child('paymentMethod').val() === 'Card') && $orderId === auth.uid + '-' + newData.child('cartEpoch').val() + '-' + newData.child('cartRevision').val() && newData.child('cartRevision').val() === (root.child('customerData').child(auth.uid).child('cart').child('_version').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_version').val() : 0) && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_version').val() === newData.child('cartRevision').val() + 1 && newData.child('cartEpoch').val() === (root.child('customerData').child(auth.uid).child('cart').child('_epoch').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_epoch').val() : 'legacy') && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_epoch').val() === newData.child('cartEpoch').val()",
+        ".validate": "data.exists() || (newData.hasChildren(['userId','items','total','shippingAddress','deliveryContact','status','date','paymentMethod','schemaVersion','subtotalMinor','totalMinor','promoCode','cartRevision','cartEpoch','paymentStatus']) && newData.child('schemaVersion').val() === 2 && newData.child('shippingAddress').val() === newData.child('deliveryContact/address').val() + ', ' + newData.child('deliveryContact/area').val() + ', ' + newData.child('deliveryContact/city').val()) && (data.exists() || ((!newData.child('demoPayment').exists()) && ((newData.child('paymentMethod').val() === 'Cash' && newData.child('paymentStatus').val() === 'PayOnDelivery' && !newData.child('cardPayment').exists()) || (newData.child('paymentMethod').val() === 'Card' && newData.child('paymentStatus').val() === 'AwaitingProcessing' && newData.child('cardPayment').exists()))))",
         "userId": {
           ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())"
         },
@@ -175,7 +175,7 @@
           ".validate": "newData.isString()"
         },
         "paymentMethod": {
-          ".validate": "newData.val() === 'Cash'"
+          ".validate": "data.exists() || newData.val() === 'Cash' || newData.val() === 'Card'"
         },
         "status": {
           ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true)) && data.exists()",
@@ -273,6 +273,51 @@
         },
         "cartEpoch": {
           ".validate": "newData.isString() && (newData.val() === 'legacy' || newData.val().matches(/^[A-Za-z0-9_-]{20}$/))"
+        },
+        "demoPayment": {
+          ".validate": "newData.parent().child('paymentMethod').val() === 'CardDemo' && newData.hasChildren(['mode','status','reference','brand','last4','amountMinor'])",
+          "mode": {
+            ".validate": "newData.val() === 'demo'"
+          },
+          "status": {
+            ".validate": "newData.val() === 'approved'"
+          },
+          "reference": {
+            ".validate": "newData.isString() && newData.val() === 'DEMO-' + $orderId"
+          },
+          "brand": {
+            ".validate": "newData.val() === 'Visa'"
+          },
+          "last4": {
+            ".validate": "newData.val() === '4242'"
+          },
+          "amountMinor": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() === newData.parent().parent().child('totalMinor').val()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "paymentStatus": {
+          ".validate": "data.exists() || (newData.parent().child('paymentMethod').val() === 'Cash' && newData.val() === 'PayOnDelivery') || (newData.parent().child('paymentMethod').val() === 'Card' && newData.val() === 'AwaitingProcessing')"
+        },
+        "cardPayment": {
+          ".validate": "data.exists() || (newData.parent().child('paymentMethod').val() === 'Card' && newData.hasChildren(['id','brand','last4','expiry']) && root.child('customerData').child(auth.uid).child('paymentMethods').child(newData.child('id').val()).exists())",
+          "id": {
+            ".validate": "data.exists() || (newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{1,128}$/))"
+          },
+          "$other": {
+            ".validate": false
+          },
+          "brand": {
+            ".validate": "data.exists() || newData.val() === root.child('customerData').child(auth.uid).child('paymentMethods').child(newData.parent().child('id').val()).child('brand').val()"
+          },
+          "last4": {
+            ".validate": "data.exists() || newData.val() === root.child('customerData').child(auth.uid).child('paymentMethods').child(newData.parent().child('id').val()).child('last4').val()"
+          },
+          "expiry": {
+            ".validate": "data.exists() || newData.val() === root.child('customerData').child(auth.uid).child('paymentMethods').child(newData.parent().child('id').val()).child('expiry').val()"
+          }
         }
       }
     },

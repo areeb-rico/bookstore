@@ -198,6 +198,16 @@ void main() {
       await expectLater(
         store.placeOrder(
           CheckoutRequest(
+            quote: store.quote(),
+            delivery: request(store).delivery,
+            paymentMethod: 'Card',
+          ),
+        ),
+        throwsA(isA<CheckoutException>()),
+      );
+      await expectLater(
+        store.placeOrder(
+          CheckoutRequest(
             quote: CheckoutQuote(
               uid: 'bob',
               cartRevision: 1,
@@ -256,6 +266,57 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(alerts, hasLength(1));
       await subscription.cancel();
+    },
+  );
+
+  test(
+    'card checkout requires valid saved metadata and never marks a bank charge paid',
+    () async {
+      await store.bind('alice', admin: false);
+      await repo.emit('alice');
+      final reviewed = store.quote();
+      await expectLater(
+        store.placeOrder(
+          CheckoutRequest(
+            quote: reviewed,
+            delivery: request(store).delivery,
+            paymentMethod: 'Card',
+          ),
+        ),
+        throwsA(isA<CheckoutException>()),
+      );
+      await expectLater(
+        store.placeOrder(
+          CheckoutRequest(
+            quote: reviewed,
+            delivery: request(store).delivery,
+            paymentMethod: 'CardDemo',
+          ),
+        ),
+        throwsA(isA<CheckoutException>()),
+      );
+      expect(repo.placed, isEmpty);
+      final card = SavedPaymentMethod(
+        id: 'saved-card',
+        brand: 'Visa',
+        last4: '1234',
+        expiry: '12/${(DateTime.now().year + 1).toString().substring(2)}',
+      );
+      final result = await store.placeOrder(
+        CheckoutRequest(
+          quote: reviewed,
+          delivery: request(store).delivery,
+          paymentMethod: 'Card',
+          cardPayment: card,
+        ),
+      );
+      expect(result.paymentMethod, 'Card');
+      expect(repo.placed.single.cardPayment!.id, card.id);
+      expect(result.paymentStatus, 'AwaitingProcessing');
+      expect(result.demoPayment, isNull);
+      final decoded = Order.fromMap(result.id, result.toMap());
+      expect(decoded.cardPayment!.toMap(), card.toMap());
+      expect(decoded.paymentStatus, 'AwaitingProcessing');
     },
   );
 

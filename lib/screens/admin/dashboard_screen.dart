@@ -169,7 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           _stat(
                             '\$${(_revenue / 1000).toStringAsFixed(1)}k',
                             'Order value',
-                            'Cash on Delivery',
+                            'Cash & card orders',
                           ),
                         ],
                       ),

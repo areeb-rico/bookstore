@@ -91,6 +91,8 @@ firebase deploy --only database --project YOUR_DEVELOPMENT_PROJECT
 | `/reviewLikes/{bookId}/{reviewUid}/{voterUid}` | Unique voter flag | Verified active read; voter writes |
 | `/orders/{orderId}` | Immutable owner and book/price snapshot | Owner query; admins read |
 | `/orders/{orderId}/status` | Shared delivery status | Admin writes |
+| `/orders/{orderId}/cardPayment` | Saved card ID, brand, last four digits and expiry | Immutable owner-validated snapshot |
+| `/orders/{orderId}/paymentStatus` | Internal unprocessed state; no bank charge claimed | Immutable, not shown in customer UI |
 
 Order creation, removal of purchased cart entries and cart version advancement
 use one atomic multi-location update. The UI confirms the saved receipt after
@@ -126,15 +128,9 @@ is older. Firebase CLI selects `java` from `PATH`.
   Functions. The latest free-plan rules were reported released successfully;
   a separate read-back confirmed the exact local match after the CLI shutdown error.
 - Combined verification is deferred per user instruction. See [Phase 2](PHASE_2.md).
-- Checkout uses Cash on Delivery. Profile card references cannot charge a card.
-- Phase 3 adds catalog/cart checks and integer-cent line/subtotal/total validation
-  in Spark rules, with up to 20 different books per order and the SAVE10 promotion.
-- Versioned carts, lifetime IDs and atomic checkout handle competing cart writes
-  and duplicate submissions. Multi-device behavior checks remain queued.
-- Order alerts and a read/unread inbox work through in-app subscriptions; no
-  background push or email sender is configured. See [Phase 3](PHASE_3.md).
-- Mobile Firebase configuration exists for Android and iOS. Web/desktop Firebase
-  configurations have not been generated or verified.
+- Checkout offers Cash on Delivery and saved-card selection, with creation from
+  checkout or profile. No bank/provider charge is processed. See
+  [payment methods](PAYMENT_METHODS.md).
 
 Implementation references: [Flutter database writes and streams](https://firebase.google.com/docs/database/flutter/read-and-write),
 [database access conditions](https://firebase.google.com/docs/database/security/rules-conditions).

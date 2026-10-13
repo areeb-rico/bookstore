@@ -141,7 +141,7 @@ class UserDataService extends ChangeNotifier {
   Future<void> deleteAddress(String id) =>
       root.child('customerData/$_uid/addresses/$id').remove();
 
-  Future<void> savePaymentMetadata(
+  Future<Map<String, String>> savePaymentMetadata(
     String brand,
     String last4,
     String expiry,
@@ -159,11 +159,10 @@ class UserDataService extends ChangeNotifier {
     if (!end.isAfter(DateTime.now()))
       throw ArgumentError('This card has expired.');
     // No PAN, CVV or cardholder details are collected/stored here.
-    await root.child('customerData/$uid/paymentMethods').push().set({
-      'brand': brand,
-      'last4': last4,
-      'expiry': expiry,
-    });
+    final reference = root.child('customerData/$uid/paymentMethods').push();
+    final data = {'brand': brand, 'last4': last4, 'expiry': expiry};
+    await reference.set(data);
+    return {'id': reference.key!, ...data};
   }
 
   Future<void> deletePaymentMetadata(String id) =>

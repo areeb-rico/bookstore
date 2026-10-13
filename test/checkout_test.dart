@@ -33,6 +33,8 @@ Order receipt(CheckoutRequest request) => Order(
   deliveryContact: request.delivery,
   cartRevision: request.quote.cartRevision,
   cartEpoch: request.quote.cartEpoch,
+  paymentMethod: request.paymentMethod,
+  cardPayment: request.cardPayment,
   date: DateTime(2026),
 );
 Future<void> delivery(WidgetTester tester) async {
@@ -43,6 +45,11 @@ Future<void> delivery(WidgetTester tester) async {
   await tester.enterText(fields.at(3), 'Gulshan');
   await tester.enterText(fields.at(4), 'Karachi');
   await tester.ensureVisible(find.text('Continue'));
+  await tester.tap(find.text('Continue'));
+  await tester.pumpAndSettle();
+  expect(find.text('Payment Method'), findsOneWidget);
+  await tester.tap(find.text('Cash on Delivery'));
+  await tester.pump();
   await tester.tap(find.text('Continue'));
   await tester.pumpAndSettle();
 }
@@ -67,6 +74,7 @@ void main() {
               onOrderPlaced: (request) {
                 expect(request.delivery.name, 'Alice');
                 expect(request.delivery.phone, '03001234567');
+                expect(request.paymentMethod, 'Cash');
                 expect(
                   request.delivery.formattedAddress,
                   'House 12, Gulshan, Karachi',
@@ -130,6 +138,88 @@ void main() {
       updates.dispose();
     },
   );
+  for (final hasCard in [false, true]) {
+    testWidgets(
+      hasCard
+          ? 'saved card is selected and included in the confirmed order'
+          : 'online payment without a saved card offers creation',
+      (tester) async {
+        final updates = ChangeNotifier();
+        CheckoutRequest? captured;
+        final expiry =
+            '12/${(DateTime.now().year + 1).toString().substring(2)}';
+        if (hasCard)
+          UserSession.paymentMethods = [
+            {
+              'id': 'saved-card',
+              'brand': 'Visa',
+              'last4': '1234',
+              'expiry': expiry,
+            },
+          ];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: CheckoutSheet(
+                quote: quote(),
+                updates: updates,
+                latestQuote: quote,
+                onOrderPlaced: (request) async {
+                  captured = request;
+                  return receipt(request);
+                },
+              ),
+            ),
+          ),
+        );
+        final fields = find.byType(TextFormField);
+        for (final entry in [
+          'Alice',
+          '03001234567',
+          'House 12',
+          'Gulshan',
+          'Karachi',
+        ].asMap().entries) {
+          await tester.enterText(fields.at(entry.key), entry.value);
+        }
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Continue'),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.tap(find.text('Credit / Debit Card'));
+        await tester.pumpAndSettle();
+        expect(find.text('Create payment method'), findsOneWidget);
+        expect(find.textContaining('Demo'), findsNothing);
+        expect(find.textContaining('Pending'), findsNothing);
+        if (!hasCard) {
+          await tester.tap(find.text('Continue'));
+          await tester.pumpAndSettle();
+          expect(find.text('Payment Method'), findsOneWidget);
+          expect(captured, isNull);
+        } else {
+          await tester.ensureVisible(find.text('Visa •••• 1234'));
+          await tester.tap(find.text('Visa •••• 1234'));
+          await tester.tap(find.text('Continue'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Place Order'));
+          await tester.pumpAndSettle();
+          expect(captured!.paymentMethod, 'Card');
+          expect(captured!.cardPayment!.id, 'saved-card');
+          expect(find.text('Order Confirmed'), findsOneWidget);
+          expect(find.textContaining('Paid'), findsNothing);
+          expect(find.textContaining('AwaitingProcessing'), findsNothing);
+        }
+        await tester.pumpWidget(const SizedBox());
+        updates.dispose();
+      },
+    );
+  }
   testWidgets(
     'live cart change requires review before the first order attempt',
     (tester) async {

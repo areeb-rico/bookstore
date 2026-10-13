@@ -20,11 +20,13 @@ async function main() {
   const client = new Client({ urlPrefix: identityOrigin(), auth: true });
   const database = new Client({ urlPrefix: 'https://bookstore-fe6f2-default-rtdb.firebaseio.com', auth: true });
   if (mode === 'verify-rules') {
+    const reportPrefix = (process.argv.find(arg => arg.startsWith('--report-prefix=')) || '--report-prefix=phase-3-rules').split('=')[1];
+    if (!/^[a-z0-9-]+$/.test(reportPrefix)) throw new Error('Invalid report prefix.');
     const remote = (await database.get('/.settings/rules.json')).body;
     const parsed = typeof remote === 'string' ? JSON.parse(remote) : remote;
     const localText = await fs.readFile('database.rules.json', 'utf8');
     const local = JSON.parse(localText);
-    assert.deepEqual(parsed, local, 'Deployed rules differ from the local Phase 3 rules');
+    assert.deepEqual(parsed, local, 'Deployed rules differ from the local rules');
     const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
       ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
     const report = {
@@ -37,8 +39,8 @@ async function main() {
     };
     const reportDir = path.resolve('.firebase/setup-backups');
     await fs.mkdir(reportDir, { recursive: true });
-    await fs.writeFile(path.join(reportDir, 'phase-3-rules-remote.json'), JSON.stringify(parsed, null, 2));
-    await fs.writeFile(path.join(reportDir, 'phase-3-rules-readback.json'), JSON.stringify(report, null, 2));
+    await fs.writeFile(path.join(reportDir, `${reportPrefix}-remote.json`), JSON.stringify(parsed, null, 2));
+    await fs.writeFile(path.join(reportDir, `${reportPrefix}-readback.json`), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report));
     return;
   }

@@ -66,7 +66,7 @@ are deferred to the combined Phase 5 verification. See [Phase 2 details](PHASE_2
   define a checkout model whose total can be checked within Spark rules.
 - Handle stale catalog/cart data and repeated submissions clearly.
 - Add in-app order-status notifications using existing database subscriptions.
-- Use administrator-managed delivery statuses for this eProject. Online payment,
+- Use administrator-managed delivery statuses for this eProject. Live bank payment,
   paid delivery APIs, provider webhooks and paid server deployments are outside
   the free project scope; do not display them as working integrations.
 
@@ -74,6 +74,9 @@ Implemented:
 - Typed checkout quotes, saved-address selection, validated delivery contact and
   optional address persistence after acknowledgement.
 - Cash on Delivery review and receipt screens; slow-save state and stable retries.
+- User-requested saved-card checkout: create/select a payment method in checkout
+  or profile, retain masked metadata in orders, and confirm only acknowledged
+  orders. No bank charge or paid status is fabricated. See [payment methods](PAYMENT_METHODS.md).
 - Integer-cent price, line, subtotal and SAVE10 total checks in database rules.
   Each order is bounded to 20 different books for explicit rule summation.
 - Cart transactions with versions and lifetime IDs; atomic checkout rejects stale
@@ -96,6 +99,9 @@ during the separate rules read-back task.
 - Show useful loading, empty and error states throughout the app.
 
 ## Phase 5 — verification and submission (pending)
+- At the user's separate request, the Android release APK was built successfully
+  on 13 October 2026. Package and signature checks passed; see
+  [Android build record](ANDROID_BUILD.md). App behavior verification remains pending.
 - Run combined verification after implementation, as requested by the user.
 - Run analyzer, automated tests and Android build checks.
 - Validate deployed Firebase rules and two-account isolation on a device/emulator.

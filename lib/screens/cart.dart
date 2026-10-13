@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/checkout.dart';
 import '../services/user_data_service.dart';
+import '../widgets/payment_method_editor.dart';
 import 'user_session.dart';
 
 class CartScreen extends StatefulWidget {
@@ -260,7 +261,7 @@ class _CartScreenState extends State<CartScreen> {
                       ),
                     ),
                     const Text(
-                      'Cash on Delivery • Up to 20 different books per order',
+                      'Cash or card • Up to 20 different books per order',
                       style: TextStyle(fontSize: 12),
                     ),
                   ],
@@ -302,12 +303,15 @@ class CheckoutSheet extends StatefulWidget {
 
 class _CheckoutSheetState extends State<CheckoutSheet> {
   final form = GlobalKey<FormState>();
+  SavedPaymentMethod? selectedCard;
+  String? newlySavedCardId;
   final name = TextEditingController(),
       phone = TextEditingController(),
       address = TextEditingController(),
       area = TextEditingController(),
       city = TextEditingController();
   int step = 0;
+  String? selectedPaymentMethod;
   bool submitting = false, waiting = false, saveAddress = false;
   String? error, addressSaveMessage;
   Timer? waitTimer;
@@ -332,7 +336,17 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   void changed() {
-    if (mounted) setState(() {});
+    if (mounted)
+      setState(() {
+        final ids = UserSession.paymentMethods.map((card) => card['id']);
+        if (ids.contains(newlySavedCardId)) newlySavedCardId = null;
+        if (attempt == null &&
+            selectedCard != null &&
+            !ids.contains(selectedCard!.id) &&
+            selectedCard!.id != newlySavedCardId) {
+          selectedCard = null;
+        }
+      });
   }
 
   @override
@@ -341,6 +355,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     widget.updates.removeListener(changed);
     UserSession.profileChanges.removeListener(changed);
     for (final controller in [name, phone, address, area, city]) {
+      controller.clear();
       controller.dispose();
     }
     super.dispose();
@@ -350,11 +365,39 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     if (submitting || confirmed != null) return;
     if (step == 0) {
       if (stale) return;
-      if (form.currentState!.validate()) setState(() => step = 1);
+      if (form.currentState!.validate()) {
+        FocusScope.of(context).unfocus();
+        setState(() {
+          step = 1;
+          error = null;
+        });
+      }
+      return;
+    }
+    if (step == 1) {
+      if (stale) return;
+      if (!['Cash', 'Card'].contains(selectedPaymentMethod)) {
+        setState(() => error = 'Select a payment method to continue.');
+        return;
+      }
+      if (selectedPaymentMethod == 'Card') {
+        try {
+          if (selectedCard == null)
+            throw StateError('Create or select a payment method to continue.');
+          selectedCard!.validate();
+        } on StateError catch (failure) {
+          setState(() => error = failure.message.toString());
+          return;
+        }
+      }
+      FocusScope.of(context).unfocus();
+      setState(() {
+        step = 2;
+        error = null;
+      });
       return;
     }
     if (stale && attempt == null) return;
-    attempt ??= CheckoutRequest(quote: widget.quote, delivery: delivery);
     setState(() {
       submitting = true;
       error = null;
@@ -364,6 +407,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       if (mounted && submitting) setState(() => waiting = true);
     });
     try {
+      attempt ??= CheckoutRequest(
+        quote: widget.quote,
+        delivery: delivery,
+        paymentMethod: selectedPaymentMethod!,
+        cardPayment: selectedPaymentMethod == 'Card' ? selectedCard : null,
+      );
       final receipt = await widget.onOrderPlaced(attempt!);
       if (!mounted || widget.quote.uid != UserSession.uid) return;
       setState(() => confirmed = receipt);
@@ -395,7 +444,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         );
     } finally {
       waitTimer?.cancel();
-      if (mounted) setState(() => submitting = false);
+      if (mounted)
+        setState(() {
+          submitting = false;
+        });
     }
   }
 
@@ -445,8 +497,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       ? 'Order Confirmed'
                       : step == 0
                       ? 'Delivery Details'
+                      : step == 1
+                      ? 'Payment Method'
                       : 'Review your order',
                 ),
+                subtitle: receipt == null
+                    ? Text('Step ${step + 1} of 3')
+                    : null,
                 trailing: IconButton(
                   tooltip: 'Close checkout',
                   onPressed: submitting
@@ -479,7 +536,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                                   ),
                                 ),
                               ),
-                            if (step == 0) deliveryForm() else review(),
+                            if (step == 0)
+                              deliveryForm()
+                            else if (step == 1)
+                              paymentSelection()
+                            else
+                              review(),
                             if (error != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 16),
@@ -525,18 +587,24 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                             TextButton(
                               onPressed: submitting
                                   ? null
-                                  : () => setState(() => step = 0),
-                              child: const Text('Edit details'),
+                                  : () => setState(() {
+                                      step--;
+                                      error = null;
+                                    }),
+                              child: const Text('Back'),
                             ),
                           const Spacer(),
                           FilledButton(
-                            onPressed: submitting || (stale && attempt == null)
+                            onPressed:
+                                submitting ||
+                                    (stale && attempt == null) ||
+                                    (step == 1 && selectedPaymentMethod == null)
                                 ? null
                                 : next,
                             child: Text(
                               submitting
                                   ? 'Saving order...'
-                                  : step == 0
+                                  : step < 2
                                   ? 'Continue'
                                   : attempt == null
                                   ? 'Place Order'
@@ -611,11 +679,134 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       },
     ),
   );
+  Future<void> createPaymentMethod() async {
+    if (submitting || attempt != null) return;
+    final card = await showPaymentMethodEditor(context);
+    if (!mounted || card == null || widget.quote.uid != UserSession.uid) return;
+    setState(() {
+      selectedCard = card;
+      newlySavedCardId =
+          UserSession.paymentMethods.any((saved) => saved['id'] == card.id)
+          ? null
+          : card.id;
+      error = null;
+    });
+  }
+
+  bool usable(SavedPaymentMethod card) {
+    try {
+      card.validate();
+      return true;
+    } on StateError {
+      return false;
+    }
+  }
+
+  Widget paymentSelection() {
+    final cards = UserSession.paymentMethods
+        .map(SavedPaymentMethod.fromMap)
+        .toList();
+    // Acknowledged saves are selectable even before the profile stream catches up.
+    if (selectedCard != null &&
+        newlySavedCardId == selectedCard!.id &&
+        !cards.any((card) => card.id == selectedCard!.id)) {
+      cards.add(selectedCard!);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Select how you would like to pay.'),
+        const SizedBox(height: 16),
+        RadioGroup<String>(
+          groupValue: selectedPaymentMethod,
+          onChanged: (value) {
+            if (submitting ||
+                attempt != null ||
+                !['Cash', 'Card'].contains(value))
+              return;
+            setState(() {
+              selectedPaymentMethod = value;
+              error = null;
+            });
+          },
+          child: Column(
+            children: [
+              Card(
+                child: RadioListTile<String>(
+                  value: 'Cash',
+                  enabled: !submitting && attempt == null,
+                  selected: selectedPaymentMethod == 'Cash',
+                  secondary: const Icon(Icons.payments_outlined),
+                  title: const Text('Cash on Delivery'),
+                  subtitle: const Text('Pay when your order arrives.'),
+                ),
+              ),
+              Card(
+                child: RadioListTile<String>(
+                  value: 'Card',
+                  enabled: !submitting && attempt == null,
+                  selected: selectedPaymentMethod == 'Card',
+                  secondary: const Icon(Icons.credit_card_outlined),
+                  title: const Text('Credit / Debit Card'),
+                  subtitle: const Text('Select a saved payment method.'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (selectedPaymentMethod == 'Card') ...[
+          const SizedBox(height: 12),
+          if (cards.isNotEmpty)
+            RadioGroup<String>(
+              groupValue: selectedCard?.id,
+              onChanged: (id) {
+                if (submitting || attempt != null) return;
+                setState(() {
+                  selectedCard = cards.firstWhere((card) => card.id == id);
+                  error = null;
+                });
+              },
+              child: Column(
+                children: [
+                  for (final card in cards)
+                    RadioListTile<String>(
+                      value: card.id,
+                      enabled: usable(card) && !submitting && attempt == null,
+                      title: Text(card.label),
+                      subtitle: Text(
+                        usable(card)
+                            ? 'Expires ${card.expiry}'
+                            : 'Expired — create another payment method',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          OutlinedButton.icon(
+            onPressed: submitting || attempt != null
+                ? null
+                : createPaymentMethod,
+            icon: const Icon(Icons.add_card),
+            label: const Text('Create payment method'),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget review() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text('Cash on Delivery', style: Theme.of(context).textTheme.titleMedium),
-      const Text('Pay when your order arrives.'),
+      Text(
+        selectedPaymentMethod == 'Card'
+            ? 'Payment: Credit / Debit Card'
+            : 'Payment: Cash on Delivery',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      if (selectedPaymentMethod == 'Card' && selectedCard != null)
+        Text(selectedCard!.label)
+      else
+        const Text('Pay when your order arrives.'),
       const SizedBox(height: 16),
       Text('${delivery.name} • ${delivery.phone}'),
       Text(delivery.formattedAddress),
@@ -647,7 +838,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           '${order.deliveryContact!.name} • ${order.deliveryContact!.phone}',
         ),
       Text(order.shippingAddress),
-      const Text('Payment: Cash on Delivery'),
+      Text('Payment: ${order.paymentLabel}'),
+      if (order.cardLabel != null) Text(order.cardLabel!),
       const SizedBox(height: 16),
       const Text(
         'Track delivery in Profile → Your orders. Order updates are also available in Notifications.',

@@ -8,7 +8,13 @@ read-back, which completed successfully on 13 October 2026.
 
 ## Checkout
 
-- Cash on Delivery is the only payment method. No online charge is simulated.
+- Checkout offers Cash on Delivery and Credit / Debit Card with saved-card
+  selection. Without a saved card, **Create payment method** is available in
+  checkout; a newly saved card is immediately selected. Review and order history
+  show masked card metadata. **Order Confirmed** follows database acknowledgement.
+  No simulated approval, test presets or payment-pending labels appear. No bank
+  charge is processed; see [payment methods](PAYMENT_METHODS.md).
+
 - Delivery name, normalized phone, house/street, area and city are stored as an
   immutable `deliveryContact` snapshot, alongside the formatted address.
 - Customers can select a saved address or enter one, and optionally save the
@@ -91,8 +97,10 @@ submission for the same reviewed cart cannot create another receipt.
 - Updated the local-only demo database-rule suite for ownership, protected admin
   flags, forged amounts, duplicate lines, stale carts, retries, removal/restoration,
   read acknowledgements and historical status updates after catalog edits/deletion.
-- Final queue: run analyzer, Flutter tests, emulator rules suite, Android build
-  and two-device checkout/restart scenarios in Phase 5. Repeat rule read-back
+- Final queue: run analyzer, Flutter tests, emulator rules suite
+  and two-device checkout/restart scenarios in Phase 5. The release APK build
+  was separately completed for user testing; see [build record](ANDROID_BUILD.md).
+  Repeat rule read-back
   if a later phase changes the rules.
 
 Firebase CLI reported the final Phase 3 rules syntactically valid and released

@@ -196,6 +196,20 @@ class StoreController extends ChangeNotifier {
       throw const CheckoutException('Account changed. Open checkout again.');
     reviewed.validate();
     request.delivery.validate();
+    if (!['Cash', 'Card'].contains(request.paymentMethod)) {
+      throw const CheckoutException('Choose a valid payment method.');
+    }
+    if (request.paymentMethod == 'Card') {
+      if (request.cardPayment == null)
+        throw const CheckoutException(
+          'Select a saved card or create a payment method.',
+        );
+      request.cardPayment!.validate();
+    } else if (request.cardPayment != null) {
+      throw const CheckoutException(
+        'Card selection does not match the payment method.',
+      );
+    }
     checkoutPending = true;
     final generation = _generation;
     final owner = _uid;
@@ -216,7 +230,11 @@ class StoreController extends ChangeNotifier {
           promoCode: reviewed.promoCode,
           cartRevision: reviewed.cartRevision,
           cartEpoch: reviewed.cartEpoch,
-          paymentMethod: 'Cash',
+          paymentMethod: request.paymentMethod,
+          cardPayment: request.cardPayment,
+          paymentStatus: request.paymentMethod == 'Card'
+              ? 'AwaitingProcessing'
+              : 'PayOnDelivery',
           date: DateTime.now(),
         ),
       );

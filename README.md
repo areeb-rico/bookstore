@@ -8,13 +8,15 @@ Firebase Authentication and Firebase Realtime Database.
 Work is divided into five phases in [the implementation plan](docs/IMPLEMENTATION_PLAN.md).
 Phase 1 adds persistent catalog, per-account cart/wishlist, owned order history,
 atomic Cash on Delivery checkout and protected administrator access.
-Phase 2 adds persistent profiles/addresses/preferences/card references/reviews,
+Phase 2 adds persistent profiles/addresses/preferences/payment methods/reviews,
 full catalog editing, forward order status updates and Spark-compatible account
 management. The project stays on free services with no billing upgrade.
 Combined verification is deferred until implementation is complete.
 Phase 3 adds reviewed Cash on Delivery checkout, delivery contact snapshots,
 database-validated integer-cent totals, versioned carts, stable order retries and
 in-app order notifications. See [Phase 3](docs/PHASE_3.md).
+Checkout selects saved cards and offers **Create payment method** when needed.
+See [payment methods](docs/PAYMENT_METHODS.md). Bank charges are not integrated.
 Live Firebase setup is applied; device verification is tracked separately from
 local checks. See [Firebase setup](docs/FIREBASE_SETUP.md).
 
@@ -45,6 +47,7 @@ verified account granted a bookstore admin role through protected database flags
 - `lib/services/review_service.dart`: persistent reviews and voter-owned likes.
 - `lib/services/admin_service.dart`: Spark bookstore membership management.
 - `lib/services/account_policy.dart`: protected bootstrap owner identity.
+- `lib/widgets/payment_method_editor.dart`: shared saved-card creation from profile and checkout.
 - `lib/models/checkout.dart`: immutable checkout quote and delivery request.
 - `lib/screens/notifications.dart`: live order inbox with read acknowledgements.
 - `lib/screens`: customer flows and admin screens.
@@ -56,7 +59,8 @@ verified account granted a bookstore admin role through protected database flags
 ## Outstanding work
 
 Theme finishing, combined verification and final report/video remain in later
-phases. Checkout uses Cash on Delivery only and supports up to 20 different books.
+phases. Checkout supports Cash on Delivery and saved cards,
+with up to 20 different books per order. No live bank/provider payment is processed.
 In-app removal blocks bookstore access and clears saved customer data; Firebase
 Authentication identities, registration profiles and orders remain. Permanent
 Auth deletion is an owner action in Firebase Console. Phases 2/3 have not been tested;

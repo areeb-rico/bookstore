@@ -1,5 +1,5 @@
+import '../widgets/payment_method_editor.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/book.dart';
 import '../services/auth_service.dart';
@@ -364,92 +364,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
 
   Future<void> addPayment() async {
-    final last4 = TextEditingController();
-    final expiry = TextEditingController();
-    var brand = 'Visa';
-    var saving = false;
-    final form = GlobalKey<FormState>();
-    await showDialog<void>(
-      context: context,
-      builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: const Text('Save card reference'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: form,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'This reference does not authorize payments. Save only the last four digits.',
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue: brand,
-                    decoration: field('Card brand'),
-                    items: ['Visa', 'Mastercard', 'American Express']
-                        .map((b) => DropdownMenuItem(value: b, child: Text(b)))
-                        .toList(),
-                    onChanged: (v) => brand = v!,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: last4,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: field('Last 4 digits'),
-                    validator: (v) =>
-                        v?.length == 4 ? null : 'Enter exactly four digits',
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: expiry,
-                    maxLength: 5,
-                    decoration: field('Expiry MM/YY'),
-                    validator: (v) =>
-                        RegExp(r'^(0[1-9]|1[0-2])/\d{2}$').hasMatch(v ?? '')
-                        ? null
-                        : 'Use MM/YY',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: saving ? null : () => Navigator.pop(dialog),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      if (!form.currentState!.validate()) return;
-                      update(() => saving = true);
-                      final ok = await save(
-                        () => service.savePaymentMetadata(
-                          brand,
-                          last4.text,
-                          expiry.text,
-                        ),
-                      );
-                      if (!dialog.mounted) return;
-                      update(() => saving = false);
-                      if (ok) {
-                        Navigator.pop(dialog);
-                        message('Card reference saved.');
-                      }
-                    },
-              child: Text(saving ? 'Saving...' : 'Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    last4.dispose();
-    expiry.dispose();
+    final card = await showPaymentMethodEditor(context);
+    if (mounted && card != null) message('Payment method saved.');
   }
 
   void payments() => showModalBottomSheet<void>(
@@ -461,7 +377,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context, _) => Column(
           children: [
             ListTile(
-              title: const Text('Saved card references'),
+              title: const Text('Payment methods'),
               trailing: IconButton(
                 icon: const Icon(Icons.add),
                 onPressed: addPayment,
@@ -482,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () => confirmRemove(
-                                'Remove card reference?',
+                                'Remove payment method?',
                                 () =>
                                     service.deletePaymentMetadata(card['id']!),
                               ),
@@ -607,8 +523,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               Text(
-                'Total: \$${current.total.toStringAsFixed(2)} • ${current.paymentMethod == 'Cash' ? 'Cash on Delivery' : current.paymentMethod}',
+                'Total: \$${current.total.toStringAsFixed(2)} • ${current.paymentLabel}',
               ),
+              if (current.cardLabel != null) Text(current.cardLabel!),
             ],
           );
         },
@@ -750,9 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ListTile(
             leading: const Icon(Icons.credit_card),
             title: const Text('Payment Methods'),
-            subtitle: Text(
-              '${UserSession.paymentMethods.length} card references',
-            ),
+            subtitle: Text('${UserSession.paymentMethods.length} saved cards'),
             onTap: payments,
           ),
           ListTile(

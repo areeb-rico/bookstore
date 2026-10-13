@@ -156,9 +156,8 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
                 Text('Total: \$${order.total.toStringAsFixed(2)}'),
                 if (order.promoCode.isNotEmpty)
                   Text('Promotion: ${order.promoCode}'),
-                Text(
-                  'Payment: ${order.paymentMethod == "Cash" ? "Cash on Delivery" : order.paymentMethod}',
-                ),
+                Text('Payment: ${order.paymentLabel}'),
+                if (order.cardLabel != null) Text(order.cardLabel!),
               ],
             );
           },

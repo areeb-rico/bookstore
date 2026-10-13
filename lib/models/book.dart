@@ -70,6 +70,14 @@ class Order {
   String status;
   final DateTime date;
   final String paymentMethod;
+  final DemoPayment? demoPayment;
+  final SavedPaymentMethod? cardPayment;
+  final String paymentStatus;
+  String get paymentLabel => switch (paymentMethod) {
+    'Cash' => 'Cash on Delivery',
+    'Card' || 'CardDemo' => 'Credit / Debit Card',
+    _ => paymentMethod,
+  };
   final DeliveryContact? deliveryContact;
   final String promoCode;
   final int cartRevision;
@@ -77,6 +85,12 @@ class Order {
   int get totalMinor => (total * 100).round();
   int get subtotalMinor =>
       items.fold(0, (sum, item) => sum + item.book.priceMinor * item.quantity);
+
+  String? get cardLabel =>
+      cardPayment?.label ??
+      (demoPayment == null
+          ? null
+          : '${demoPayment!.brand} •••• ${demoPayment!.last4}');
 
   Order({
     required this.id,
@@ -87,6 +101,9 @@ class Order {
     this.status = 'Ordered',
     required this.date,
     this.paymentMethod = 'Cash',
+    this.demoPayment,
+    this.cardPayment,
+    this.paymentStatus = 'PayOnDelivery',
     this.deliveryContact,
     this.promoCode = '',
     this.cartRevision = 0,
@@ -100,6 +117,9 @@ class Order {
     'status': status,
     'date': date.toIso8601String(),
     'paymentMethod': paymentMethod,
+    'paymentStatus': paymentStatus,
+    if (cardPayment != null) 'cardPayment': cardPayment!.toMap(),
+    if (demoPayment != null) 'demoPayment': demoPayment!.toMap(),
     'schemaVersion': 2,
     'subtotalMinor': subtotalMinor,
     'totalMinor': totalMinor,
@@ -144,6 +164,19 @@ class Order {
       status: data['status'] as String,
       date: DateTime.parse(data['date'] as String),
       paymentMethod: data['paymentMethod'] as String? ?? 'Cash',
+      paymentStatus:
+          data['paymentStatus'] as String? ??
+          (data['paymentMethod'] == 'Cash' ? 'PayOnDelivery' : 'NotCharged'),
+      cardPayment: data['cardPayment'] is Map
+          ? SavedPaymentMethod.fromMap(
+              Map<String, dynamic>.from(data['cardPayment'] as Map),
+            )
+          : null,
+      demoPayment: data['demoPayment'] is Map
+          ? DemoPayment.fromMap(
+              Map<String, dynamic>.from(data['demoPayment'] as Map),
+            )
+          : null,
       deliveryContact: data['deliveryContact'] is Map
           ? DeliveryContact.fromMap(
               Map<String, dynamic>.from(data['deliveryContact'] as Map),
@@ -153,6 +186,82 @@ class Order {
       cartRevision: (data['cartRevision'] as num?)?.toInt() ?? 0,
       cartEpoch: data['cartEpoch'] as String? ?? 'legacy',
     );
+  }
+}
+
+/// A local simulation receipt. It is never evidence of a bank/provider charge.
+class DemoPayment {
+  const DemoPayment({
+    required this.reference,
+    required this.amountMinor,
+    this.mode = 'demo',
+    this.status = 'approved',
+    this.brand = 'Visa',
+    this.last4 = '4242',
+  });
+  final String mode, status, reference, brand, last4;
+  final int amountMinor;
+  bool matches(String orderId, int expectedAmount) =>
+      mode == 'demo' &&
+      status == 'approved' &&
+      reference == 'DEMO-$orderId' &&
+      brand == 'Visa' &&
+      last4 == '4242' &&
+      amountMinor == expectedAmount;
+  Map<String, dynamic> toMap() => {
+    'mode': mode,
+    'status': status,
+    'reference': reference,
+    'brand': brand,
+    'last4': last4,
+    'amountMinor': amountMinor,
+  };
+  factory DemoPayment.fromMap(Map<String, dynamic> data) => DemoPayment(
+    mode: data['mode'] as String,
+    status: data['status'] as String,
+    reference: data['reference'] as String,
+    brand: data['brand'] as String,
+    last4: data['last4'] as String,
+    amountMinor: (data['amountMinor'] as num).toInt(),
+  );
+}
+
+class SavedPaymentMethod {
+  const SavedPaymentMethod({
+    required this.id,
+    required this.brand,
+    required this.last4,
+    required this.expiry,
+  });
+  final String id, brand, last4, expiry;
+  factory SavedPaymentMethod.fromMap(Map<String, dynamic> data) =>
+      SavedPaymentMethod(
+        id: data['id'] as String,
+        brand: data['brand'] as String,
+        last4: data['last4'] as String,
+        expiry: data['expiry'] as String,
+      );
+  Map<String, String> toMap() => {
+    'id': id,
+    'brand': brand,
+    'last4': last4,
+    'expiry': expiry,
+  };
+  String get label => '$brand •••• $last4';
+  void validate() {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id) ||
+        !['Visa', 'Mastercard', 'American Express'].contains(brand) ||
+        !RegExp(r'^\d{4}$').hasMatch(last4) ||
+        !RegExp(r'^(0[1-9]|1[0-2])/\d{2}$').hasMatch(expiry)) {
+      throw StateError('Select a valid saved payment method.');
+    }
+    final parts = expiry.split('/');
+    if (!DateTime(
+      2000 + int.parse(parts[1]),
+      int.parse(parts[0]) + 1,
+    ).isAfter(DateTime.now())) {
+      throw StateError('This card has expired. Create another payment method.');
+    }
   }
 }
 

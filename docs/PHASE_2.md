@@ -71,21 +71,7 @@ Phase 3 rules were separately read back and matched on 13 October 2026; behavior
 checks remain queued for combined verification. Billing was not
 enabled and there is no pending paid backend deployment.
 
-Checkout now presents Cash on Delivery only. The unused full-card/CVV form and
-the promise of a future card provider have been removed. Profile card references
-remain descriptive metadata, never usable payment credentials.
-
-## Verification queued for Phase 5
-
-- Profile save failure, email reauthentication and new-email verification.
-- Address/card metadata persistence and account isolation after restart.
-- Preference restore and realtime updates while profile/checkout sheets are open.
-- Review ownership, vote uniqueness and denied writes by other accounts.
-- Owner/self protection, denied customer role grants, blocked/removed access,
-  admin role changes, removal data clearing and customer restoration.
-- Valid next-step order transitions, concurrent changes and historical snapshots.
-- Analyzer, Flutter tests, database emulator and Android build.
-
-Phase 1's previous passing checks describe the previous code/rules. Phase 3
-updated the prepared rules suite for protected access flags, forward transitions
-and checkout validation. That updated suite has not yet been run.
+Checkout now offers Cash on Delivery and saved-card selection. Profile and checkout
+share the **Create payment method** form; only brand, last four digits and expiry
+are saved. No payment token, full number or CVV is stored, and no bank charge is
+processed. See [payment methods](PAYMENT_METHODS.md).

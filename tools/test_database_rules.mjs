@@ -82,7 +82,7 @@ await allowed('own wishlist', 'customerData/alice/wishlist/1', 'PUT', true, alic
 await denied('other wishlist', 'customerData/alice/wishlist/1', 'PUT', true, bob);
 const snapshot = { ...catalog['1'], title: 'Updated Title' };
 const unit = Math.round(snapshot.price * 100), subtotal = unit * 2;
-const order = { schemaVersion: 2, userId: 'alice', total: subtotal / 100, totalMinor: subtotal, subtotalMinor: subtotal, promoCode: '', cartRevision: 1, cartEpoch: 'legacy', shippingAddress: 'House 12, Gulshan, Karachi', deliveryContact: { name: 'Alice', phone: '03001234567', address: 'House 12', area: 'Gulshan', city: 'Karachi' }, status: 'Ordered', date: '2026-10-13T12:00:00.000Z', paymentMethod: 'Cash', items: { 0: { bookId: '1', book: snapshot, quantity: 2, unitPriceMinor: unit, lineTotalMinor: subtotal } } };
+const order = { schemaVersion: 2, userId: 'alice', total: subtotal / 100, totalMinor: subtotal, subtotalMinor: subtotal, promoCode: '', cartRevision: 1, cartEpoch: 'legacy', shippingAddress: 'House 12, Gulshan, Karachi', deliveryContact: { name: 'Alice', phone: '03001234567', address: 'House 12', area: 'Gulshan', city: 'Karachi' }, status: 'Ordered', date: '2026-10-13T12:00:00.000Z', paymentMethod: 'Cash', paymentStatus: 'PayOnDelivery', items: { 0: { bookId: '1', book: snapshot, quantity: 2, unitPriceMinor: unit, lineTotalMinor: subtotal } } };
 const atomic = (record, { revision = 2, id = 'alice-legacy-1' } = {}) => ({ [`orders/${id}`]: record, 'customerData/alice/cart/1': null, 'customerData/alice/cart/_version': revision, 'customerData/alice/cart/_epoch': 'legacy' });
 await allowed('customer can read own absent receipt', 'orders/alice-legacy-1', 'GET', undefined, alice);
 await denied('wrong owner', '', 'PATCH', atomic({ ...order, userId: 'bob' }), alice);
@@ -119,6 +119,29 @@ await denied('reverse status', 'orders/alice-legacy-2/status', 'PUT', 'Ordered',
 await allowed('customer acknowledges real status', 'customerData/alice/orderReadStatus/alice-legacy-2', 'PUT', 'Processing', alice);
 await denied('other customer acknowledges status', 'customerData/alice/orderReadStatus/alice-legacy-2', 'PUT', 'Processing', bob);
 await denied('fabricated read status', 'customerData/alice/orderReadStatus/alice-legacy-2', 'PUT', 'Delivered', alice);
+// Saved card snapshots must belong to the ordering account; no bank charge is claimed.
+await allowed('cart for card order', 'customerData/alice/cart', 'PUT', { 1: 1, _version: 4, _epoch: 'legacy' }, alice);
+const card = { brand: 'Visa', last4: '1234', expiry: '12/30' };
+await allowed('save own card metadata', 'customerData/alice/paymentMethods/saved-card', 'PUT', card, alice);
+await allowed('another account saves card metadata', 'customerData/bob/paymentMethods/other-card', 'PUT', card, bob);
+const cardOrder = { ...order, cartRevision: 4, total: unit / 100, subtotalMinor: unit, totalMinor: unit,
+  paymentMethod: 'Card', paymentStatus: 'AwaitingProcessing', cardPayment: { id: 'saved-card', ...card },
+  items: { 0: { ...order.items[0], quantity: 1, lineTotalMinor: unit } } };
+const cardAtomic = record => atomic(record, { revision: 5, id: 'alice-legacy-4' });
+await denied('card requires saved metadata', '', 'PATCH', cardAtomic({ ...cardOrder, cardPayment: null }), alice);
+await denied('card cannot claim paid without a provider', '', 'PATCH', cardAtomic({ ...cardOrder, paymentStatus: 'Paid' }), alice);
+await denied('another account card cannot be selected', '', 'PATCH', cardAtomic({ ...cardOrder, cardPayment: { ...cardOrder.cardPayment, id: 'other-card' } }), alice);
+await denied('saved card snapshot cannot be forged', '', 'PATCH', cardAtomic({ ...cardOrder, cardPayment: { ...cardOrder.cardPayment, last4: '9999' } }), alice);
+await denied('CVV cannot be stored in card snapshot', '', 'PATCH', cardAtomic({ ...cardOrder, cardPayment: { ...cardOrder.cardPayment, cvv: '123' } }), alice);
+await denied('full number cannot be stored in card snapshot', '', 'PATCH', cardAtomic({ ...cardOrder, cardPayment: { ...cardOrder.cardPayment, cardNumber: '1234567890123456' } }), alice);
+await denied('cash cannot include a card snapshot', '', 'PATCH', cardAtomic({ ...cardOrder, paymentMethod: 'Cash', paymentStatus: 'PayOnDelivery' }), alice);
+await allowed('saved card atomic checkout', '', 'PATCH', cardAtomic(cardOrder), alice);
+const cardSaved = await allowed('owner reads selected card snapshot', 'orders/alice-legacy-4', 'GET', undefined, alice);
+assert.equal(cardSaved.cardPayment.id, 'saved-card');
+assert.equal(cardSaved.paymentStatus, 'AwaitingProcessing');
+await allowed('remove saved card after checkout', 'customerData/alice/paymentMethods/saved-card', 'DELETE', undefined, alice);
+await allowed('historical card snapshot survives deletion during status advance', 'orders/alice-legacy-4/status', 'PUT', 'Processing', admin);
+await denied('owner cannot forge a paid status', 'orders/alice-legacy-4/paymentStatus', 'PUT', 'Paid', alice);
 await allowed('grant admin through flags', 'accountAccess/bob', 'PUT', { ...flags, admin: true }, admin);
 await allowed('promoted admin lists users', 'users', 'GET', undefined, bob);
 await allowed('demote admin immediately', 'accountAccess/bob', 'PUT', flags, admin);

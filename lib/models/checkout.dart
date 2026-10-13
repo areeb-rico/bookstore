@@ -63,9 +63,16 @@ class CheckoutQuote {
 }
 
 class CheckoutRequest {
-  const CheckoutRequest({required this.quote, required this.delivery});
+  const CheckoutRequest({
+    required this.quote,
+    required this.delivery,
+    this.paymentMethod = 'Cash',
+    this.cardPayment,
+  });
   final CheckoutQuote quote;
   final DeliveryContact delivery;
+  final String paymentMethod;
+  final SavedPaymentMethod? cardPayment;
 }
 
 class CheckoutException implements Exception {
