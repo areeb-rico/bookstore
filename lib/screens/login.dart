@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import 'user_session.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,7 +13,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _loginFormKey = GlobalKey<FormState>();
 
   final TextEditingController emailController = TextEditingController();
-
   final TextEditingController passwordController = TextEditingController();
 
   bool isPasswordVisible = false;
@@ -28,38 +28,80 @@ class _LoginScreenState extends State<LoginScreen> {
   // =========================
   // LOGIN
   // =========================
-  void login() {
+  Future<void> login() async {
     if (!_loginFormKey.currentState!.validate()) {
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
-
     final email = emailController.text.trim();
     final password = passwordController.text;
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-
-      final success = UserSession.login(
-        userEmail: email,
-        userPassword: password,
-      );
-
-      setState(() {
-        isLoading = false;
-      });
-
-      if (success) {
-        Navigator.pushReplacementNamed(context, '/main_shell');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email or password.')),
-        );
+    // 1) Static admin login — same UI, no separate screen.
+    if (UserSession.isAdminCredentials(email, password)) {
+      UserSession.setAdminSession();
+      // Best-effort: load real users for the admin panel.
+      try {
+        final records = await AuthService.instance.fetchAllUsers();
+        UserSession.setUsersFromRecords(records);
+      } catch (_) {
+        // Ignore — admin can still open the panel without the live list.
       }
-    });
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/admin-dashboard');
+      return;
+    }
+
+    // 2) Normal Firebase user login.
+    setState(() => isLoading = true);
+
+    try {
+      final userData = await AuthService.instance.login(
+        email: email,
+        password: password,
+      );
+      UserSession.setCurrentUser(userData);
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/main_shell');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showError(e.message, resendFor: e.message.contains('verify'));
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  void _showError(String message, {bool resendFor = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: resendFor
+            ? SnackBarAction(
+                label: 'Resend',
+                onPressed: _resendVerification,
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _resendVerification() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    if (email.isEmpty || password.isEmpty) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AuthService.instance.resendVerification(
+        email: email,
+        password: password,
+      );
+      messenger.showSnackBar(
+        SnackBar(content: Text('Verification email resent to $email.')),
+      );
+    } on AuthException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   // =========================
@@ -92,11 +134,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // =========================
-  // FORGOT PASSWORD
+  // FORGOT PASSWORD (Firebase reset email)
   // =========================
   void showForgotPassword() {
     final forgotEmailController = TextEditingController();
-    final newPasswordController = TextEditingController();
+    bool sending = false;
 
     showModalBottomSheet(
       context: context,
@@ -105,13 +147,13 @@ class _LoginScreenState extends State<LoginScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.only(
             left: 24,
             right: 24,
             top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
           ),
           child: StatefulBuilder(
             builder: (context, setModalState) {
@@ -141,61 +183,48 @@ class _LoginScreenState extends State<LoginScreen> {
                       icon: Icons.email_outlined,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: true,
-                    decoration: inputDecoration(
-                      label: 'New Password',
-                      icon: Icons.lock_outline,
-                    ),
-                  ),
                   const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: () {
-                        final email = forgotEmailController.text.trim();
-                        final newPassword = newPasswordController.text;
+                      onPressed: sending
+                          ? null
+                          : () async {
+                              final email = forgotEmailController.text.trim();
+                              if (email.isEmpty ||
+                                  !RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                                      .hasMatch(email)) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please enter a valid email.'),
+                                  ),
+                                );
+                                return;
+                              }
 
-                        if (email.isEmpty || !email.contains('@')) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please enter a valid email.'),
-                            ),
-                          );
-                          return;
-                        }
-
-                        if (newPassword.length < 6) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Password must be at least 6 characters',
-                              ),
-                            ),
-                          );
-                          return;
-                        }
-
-                        final updated = UserSession.resetPassword(
-                          userEmail: email,
-                          newPassword: newPassword,
-                        );
-
-                        Navigator.pop(context);
-
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              updated
-                                  ? 'Password reset link sent to $email'
-                                  : 'No account found for this email.',
-                            ),
-                          ),
-                        );
-                      },
+                              setModalState(() => sending = true);
+                              final messenger = ScaffoldMessenger.of(this.context);
+                              try {
+                                await AuthService.instance
+                                    .sendPasswordReset(email);
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Password reset link sent to $email',
+                                    ),
+                                  ),
+                                );
+                              } on AuthException catch (e) {
+                                setModalState(() => sending = false);
+                                messenger.showSnackBar(
+                                  SnackBar(content: Text(e.message)),
+                                );
+                              }
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1E4D3B),
                         foregroundColor: Colors.white,
@@ -203,13 +232,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text(
-                        'Send Reset Link',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: sending
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Send Reset Link',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -222,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // =========================
-  // CREATE ACCOUNT
+  // CREATE ACCOUNT (Firebase register + email verification)
   // =========================
   void showCreateAccount() {
     final formKey = GlobalKey<FormState>();
@@ -236,6 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
     bool passwordVisible = false;
     bool confirmPasswordVisible = false;
     bool acceptedTerms = false;
+    bool submitting = false;
 
     showModalBottomSheet(
       context: context,
@@ -244,7 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
@@ -268,16 +307,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Color(0xFF1E4D3B),
                         ),
                       ),
-
                       const SizedBox(height: 6),
-
                       Text(
                         'Create your bookstore account.',
                         style: TextStyle(color: Colors.grey.shade700),
                       ),
-
                       const SizedBox(height: 20),
-
                       TextFormField(
                         controller: nameController,
                         textCapitalization: TextCapitalization.words,
@@ -289,17 +324,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Enter your name';
                           }
-
                           if (value.trim().length < 2) {
                             return 'Name is too short';
                           }
-
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 14),
-
                       TextFormField(
                         controller: emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -311,19 +342,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Enter your email';
                           }
-
-                          if (!RegExp(
-                            r'^[^@]+@[^@]+\.[^@]+',
-                          ).hasMatch(value.trim())) {
+                          if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                              .hasMatch(value.trim())) {
                             return 'Enter a valid email';
                           }
-
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 14),
-
                       TextFormField(
                         controller: phoneController,
                         keyboardType: TextInputType.phone,
@@ -335,13 +361,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Enter your phone number';
                           }
-
+                          if (value.trim().length < 7) {
+                            return 'Enter a valid phone number';
+                          }
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 14),
-
                       TextFormField(
                         controller: passwordController,
                         obscureText: !passwordVisible,
@@ -365,17 +391,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Enter a password';
                           }
-
                           if (value.length < 6) {
                             return 'Password must be at least 6 characters';
                           }
-
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 14),
-
                       TextFormField(
                         controller: confirmPasswordController,
                         obscureText: !confirmPasswordVisible,
@@ -400,17 +422,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Confirm your password';
                           }
-
                           if (value != passwordController.text) {
                             return 'Passwords do not match';
                           }
-
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 12),
-
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         value: acceptedTerms,
@@ -422,43 +440,78 @@ class _LoginScreenState extends State<LoginScreen> {
                           });
                         },
                       ),
-
                       const SizedBox(height: 10),
-
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: () {
-                            if (!formKey.currentState!.validate()) {
-                              return;
-                            }
+                          onPressed: submitting
+                              ? null
+                              : () async {
+                                  if (!formKey.currentState!.validate()) {
+                                    return;
+                                  }
+                                  if (!acceptedTerms) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Please accept the Terms & Conditions.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
 
-                            if (!acceptedTerms) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Please accept the Terms & Conditions.',
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
+                                  final email = emailController.text.trim();
 
-                            UserSession.register(
-                              userName: nameController.text.trim(),
-                              userEmail: emailController.text.trim(),
-                              userPhone: phoneController.text.trim(),
-                              userPassword: passwordController.text,
-                            );
+                                  // The admin email is reserved for the static
+                                  // admin login — it can't be registered.
+                                  if (email.toLowerCase() ==
+                                      UserSession.adminEmail) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'This email is reserved. Please use a '
+                                          'different email.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
 
-                            Navigator.pop(context);
+                                  setModalState(() => submitting = true);
+                                  final messenger =
+                                      ScaffoldMessenger.of(this.context);
+                                  try {
+                                    await AuthService.instance.register(
+                                      name: nameController.text.trim(),
+                                      email: email,
+                                      phone: phoneController.text.trim(),
+                                      password: passwordController.text,
+                                    );
 
-                            Navigator.pushReplacementNamed(
-                              this.context,
-                              '/main_shell',
-                            );
-                          },
+                                    if (sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
+                                    }
+                                    // Prefill the login email for convenience.
+                                    this.emailController.text = email;
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        duration: const Duration(seconds: 5),
+                                        content: Text(
+                                          'Account created! A verification link '
+                                          'was sent to $email. Verify it, then '
+                                          'log in.',
+                                        ),
+                                      ),
+                                    );
+                                  } on AuthException catch (e) {
+                                    setModalState(() => submitting = false);
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text(e.message)),
+                                    );
+                                  }
+                                },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1E4D3B),
                             foregroundColor: Colors.white,
@@ -466,13 +519,22 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(14),
                             ),
                           ),
-                          child: const Text(
-                            'Create Account',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          child: submitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Create Account',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -483,15 +545,6 @@ class _LoginScreenState extends State<LoginScreen> {
           },
         );
       },
-    );
-  }
-
-  // =========================
-  // DEMO SOCIAL LOGIN
-  // =========================
-  void showDemoMessage(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$provider login is currently a demo.')),
     );
   }
 
@@ -528,9 +581,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 22),
-
                     const Center(
                       child: Text(
                         'Welcome Back',
@@ -541,9 +592,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Center(
                       child: Text(
                         'Sign in to continue to your bookstore',
@@ -554,9 +603,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 32),
-
                     TextFormField(
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -568,19 +615,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Enter your email';
                         }
-
-                        if (!RegExp(
-                          r'^[^@]+@[^@]+\.[^@]+',
-                        ).hasMatch(value.trim())) {
+                        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                            .hasMatch(value.trim())) {
                           return 'Enter a valid email';
                         }
-
                         return null;
                       },
                     ),
-
                     const SizedBox(height: 16),
-
                     TextFormField(
                       controller: passwordController,
                       obscureText: !isPasswordVisible,
@@ -604,13 +646,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (value == null || value.isEmpty) {
                           return 'Enter your password';
                         }
-
                         return null;
                       },
                     ),
-
                     const SizedBox(height: 8),
-
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -624,9 +663,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     SizedBox(
                       width: double.infinity,
                       height: 54,
@@ -657,84 +694,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
-
-                    const SizedBox(height: 22),
-
-                    Row(
-                      children: [
-                        Expanded(child: Divider(color: Colors.grey.shade400)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'OR',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Expanded(child: Divider(color: Colors.grey.shade400)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Center(
-                      child: Text(
-                        'Optional',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              showDemoMessage('Google');
-                            },
-                            icon: const Icon(Icons.g_mobiledata, size: 28),
-                            label: const Text('Google'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.black87,
-                              backgroundColor: Colors.white,
-                              side: BorderSide(color: Colors.grey.shade300),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              showDemoMessage('Facebook');
-                            },
-                            icon: const Icon(Icons.facebook),
-                            label: const Text('Facebook'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.black87,
-                              backgroundColor: Colors.white,
-                              side: BorderSide(color: Colors.grey.shade300),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
                     const SizedBox(height: 26),
-
                     Center(
                       child: Wrap(
                         alignment: WrapAlignment.center,
@@ -754,23 +714,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 22),
-
-                    Center(
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/admin_login');
-                        },
-                        child: const Text(
-                          'Admin Portal',
-                          style: TextStyle(
-                            color: green,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                       ),
                     ),
                   ],

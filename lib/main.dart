@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'models/book.dart';
+import 'screens/auth_gate.dart';
 import 'screens/login.dart';
-import 'screens/admin_login.dart';
 import 'screens/home.dart';
 import 'screens/browser.dart';
 import 'screens/liked.dart';
@@ -14,7 +16,11 @@ import 'screens/admin/manage_users_screen.dart';
 import 'screens/admin/manage_orders_screen.dart';
 import 'screens/admin/edit_profile_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const BookStoreApp());
 }
 
@@ -194,10 +200,10 @@ class _BookStoreAppState extends State<BookStoreApp> {
 
           themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
 
-          initialRoute: '/login',
+          initialRoute: '/',
           routes: {
+            '/': (context) => const AuthGate(),
             '/login': (context) => const LoginScreen(),
-            '/admin_login': (context) => const AdminLoginScreen(),
             '/main_shell': (context) => MainNavigationShell(
               allBooks: allBooks,
               cartItems: cartItems,

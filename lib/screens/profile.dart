@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/book.dart';
+import '../services/auth_service.dart';
 import 'user_session.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -1251,14 +1252,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              // Clear current user session
+            onPressed: () async {
+              // Capture navigator before the async gap.
+              final rootNavigator = Navigator.of(context);
+
+              // Sign out of Firebase and clear the local session.
+              await AuthService.instance.signOut();
               UserSession.logout();
 
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
 
-              Navigator.pushNamedAndRemoveUntil(
-                context,
+              rootNavigator.pushNamedAndRemoveUntil(
                 '/login',
                 (route) => false,
               );

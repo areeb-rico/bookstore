@@ -1,22 +1,33 @@
 import 'package:flutter/material.dart';
 
 class UserSession {
+  // ---------------------------------------------------------------------------
+  // ADMIN (static credentials — not a Firebase account).
+  // Logging in with these on the normal login screen opens the admin panel.
+  // ---------------------------------------------------------------------------
+  static const String adminEmail = 'admin@bookstore.com';
+  static const String adminPassword = 'admin@123';
+
+  static bool isAdminCredentials(String email, String password) {
+    return email.trim().toLowerCase() == adminEmail &&
+        password == adminPassword;
+  }
+
+  // Current signed-in user
+  static String uid = '';
   static String name = '';
   static String email = '';
   static String phone = '';
-
-  static String registeredName = '';
-  static String registeredEmail = '';
-  static String registeredPhone = '';
-  static String registeredPassword = '';
+  static String role = 'Customer';
 
   static bool isLoggedIn = false;
+  static bool get isAdmin => role == 'Admin';
 
-  // REGISTERED USERS (mock, shared with the admin panel)
+  // REGISTERED USERS (populated from the Realtime Database for the admin panel)
   static List<Map<String, String>> users = [
     {
       'name': 'Admin',
-      'email': 'admin@gmail.com',
+      'email': adminEmail,
       'phone': '',
       'role': 'Admin',
     },
@@ -36,67 +47,45 @@ class UserSession {
   // DARK MODE
   static final ValueNotifier<bool> darkMode = ValueNotifier<bool>(false);
 
-  static bool register({
-    required String userName,
-    required String userEmail,
-    required String userPhone,
-    required String userPassword,
-  }) {
-    registeredName = userName;
-    registeredEmail = userEmail;
-    registeredPhone = userPhone;
-    registeredPassword = userPassword;
-
-    name = userName;
-    email = userEmail;
-    phone = userPhone;
+  /// Populates the current-user fields from a Realtime Database user record.
+  static void setCurrentUser(Map<String, dynamic> data) {
+    uid = (data['uid'] ?? '').toString();
+    name = (data['name'] ?? '').toString();
+    email = (data['email'] ?? '').toString();
+    phone = (data['phone'] ?? '').toString();
+    role = (data['role'] ?? 'Customer').toString();
     isLoggedIn = true;
-
-    users.add({
-      'name': userName,
-      'email': userEmail,
-      'phone': userPhone,
-      'role': 'Customer',
-    });
-
-    return true;
   }
 
-  static bool login({required String userEmail, required String userPassword}) {
-    if (registeredEmail.isEmpty || registeredPassword.isEmpty) {
-      return false;
-    }
-
-    if (userEmail.trim().toLowerCase() ==
-            registeredEmail.trim().toLowerCase() &&
-        userPassword == registeredPassword) {
-      name = registeredName;
-      email = registeredEmail;
-      phone = registeredPhone;
-      isLoggedIn = true;
-
-      return true;
-    }
-
-    return false;
+  /// Marks the session as the static admin account.
+  static void setAdminSession() {
+    uid = 'admin';
+    name = 'Admin';
+    email = adminEmail;
+    phone = '';
+    role = 'Admin';
+    isLoggedIn = true;
   }
 
-  // Mock password reset: updates the stored password for the account.
-  static bool resetPassword({
-    required String userEmail,
-    required String newPassword,
-  }) {
-    if (registeredEmail.isEmpty) {
-      return false;
-    }
-
-    if (userEmail.trim().toLowerCase() !=
-        registeredEmail.trim().toLowerCase()) {
-      return false;
-    }
-
-    registeredPassword = newPassword;
-    return true;
+  /// Replaces the admin-panel user list with records fetched from the
+  /// Realtime Database.
+  static void setUsersFromRecords(List<Map<String, dynamic>> records) {
+    users = [
+      {
+        'name': 'Admin',
+        'email': adminEmail,
+        'phone': '',
+        'role': 'Admin',
+      },
+      ...records.map(
+        (r) => {
+          'name': (r['name'] ?? '').toString(),
+          'email': (r['email'] ?? '').toString(),
+          'phone': (r['phone'] ?? '').toString(),
+          'role': (r['role'] ?? 'Customer').toString(),
+        },
+      ),
+    ];
   }
 
   static void updateProfile({
@@ -107,24 +96,18 @@ class UserSession {
     name = userName;
     email = userEmail;
     phone = userPhone;
-
-    registeredName = userName;
-    registeredEmail = userEmail;
-    registeredPhone = userPhone;
   }
 
   static void logout() {
+    uid = '';
     name = '';
     email = '';
     phone = '';
+    role = 'Customer';
     isLoggedIn = false;
   }
 
   static void setDarkMode(bool value) {
     darkMode.value = value;
-  }
-
-  static bool hasAccount() {
-    return registeredEmail.isNotEmpty && registeredPassword.isNotEmpty;
   }
 }
