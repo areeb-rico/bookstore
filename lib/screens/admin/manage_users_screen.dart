@@ -1,230 +1,221 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../../services/admin_service.dart';
 import '../user_session.dart';
 
 class ManageUsersScreen extends StatefulWidget {
   const ManageUsersScreen({super.key});
-
   @override
   State<ManageUsersScreen> createState() => _ManageUsersScreenState();
 }
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
-  final _searchCtl = TextEditingController();
-  String _q = '';
-
-  final List<Color> _palette = [
-    Colors.green,
-    Colors.brown,
-    Colors.blue,
-    Colors.red,
-  ];
-
-  List<Map<String, String>> get _users => UserSession.users;
-
-  List<Map<String, String>> get _vis {
-    if (_q.isEmpty) return _users;
-    var needle = _q.toLowerCase();
-    var out = <Map<String, String>>[];
-    var i = 0;
-    while (i < _users.length) {
-      var u = _users[i];
-      var n = u['name'].toString().toLowerCase();
-      var e = u['email'].toString().toLowerCase();
-      if (n.contains(needle) || e.contains(needle)) out.add(u);
-      i++;
-    }
-    return out;
-  }
-
+  final service = AdminService.instance;
+  List<Map<String, dynamic>> users = [];
+  String query = '';
+  bool loading = true, working = false;
+  String? error;
   @override
-  void dispose() {
-    _searchCtl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    load();
   }
 
-  void _confirmDelete(int idx) {
-    var u = _users[idx];
-    showDialog(
+  String describe(Object e) => e is StateError
+      ? e.message.toString()
+      : e is FirebaseException && e.code == 'permission-denied'
+      ? 'Your administrator access changed. Sign in again.'
+      : 'Could not update bookstore access. Please retry.';
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await service.listUsers();
+      if (!mounted) return;
+      setState(() {
+        users = result;
+        loading = false;
+      });
+      UserSession.setUsersFromRecords(result);
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          loading = false;
+          error = describe(e);
+        });
+    }
+  }
+
+  Future<void> action(Map<String, dynamic> user, String selected) async {
+    if (working || user['protected'] == true) return;
+    final name = user['name']?.toString().isNotEmpty == true
+        ? user['name']
+        : user['email'];
+    final verb = selected == 'delete'
+        ? 'Remove bookstore access for'
+        : selected == 'role'
+        ? 'Change role for'
+        : selected == 'restore'
+        ? 'Restore bookstore access for'
+        : user['disabled'] == true
+        ? 'Unblock'
+        : 'Block';
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Remove user?'),
-        content: Text('Remove ${u['name']} from the platform?'),
+      builder: (dialog) => AlertDialog(
+        title: Text('$verb $name?'),
+        content: Text(
+          selected == 'delete'
+              ? 'Bookstore sign-in will be blocked and saved addresses, card references, settings, cart and wishlist will be cleared. The registration profile and order history are retained for administration. The Firebase Authentication identity remains.'
+              : selected == 'role'
+              ? 'Admin access allows catalog and account management. Bookstore permissions update through protected database rules.'
+              : 'Bookstore access will be updated. Firebase Authentication credentials remain unchanged.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialog, false),
             child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () {
-              setState(() => _users.removeAt(idx));
-              Navigator.pop(context);
-              _snack('${u['name']} removed');
-            },
-            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('Confirm'),
           ),
         ],
       ),
     );
-  }
-
-  void _toggleRole(int idx) {
-    setState(() {
-      _users[idx]['role'] = _users[idx]['role'] == 'Admin'
-          ? 'Customer'
-          : 'Admin';
-    });
-    _snack('Role changed to ${_users[idx]['role']}');
-  }
-
-  void _snack(String m) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m), duration: const Duration(seconds: 1)),
-    );
+    if (confirmed != true || !mounted) return;
+    setState(() => working = true);
+    try {
+      final uid = user['uid'] as String;
+      if (selected == 'delete') {
+        await service.removeUser(uid);
+      } else if (selected == 'restore') {
+        await service.restoreUser(uid);
+      } else if (selected == 'role') {
+        await service.changeRole(
+          uid,
+          user['role'] == 'Admin' ? 'Customer' : 'Admin',
+        );
+      } else {
+        await service.setDisabled(uid, user['disabled'] != true);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Account updated.')));
+      await load();
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(describe(e))));
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    var items = _vis;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F1E8),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F1E8),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Users',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
+    final visible = users
+        .where(
+          (u) => '${u['name']} ${u['email']}'.toLowerCase().contains(
+            query.toLowerCase(),
           ),
-        ),
+        )
+        .toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manage users'),
+        actions: [
+          IconButton(
+            onPressed: working ? null : load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              decoration: const InputDecoration(
+                labelText: 'Search users',
+                prefixIcon: Icon(Icons.search),
               ),
-              child: TextField(
-                controller: _searchCtl,
-                onChanged: (v) => setState(() => _q = v),
-                decoration: const InputDecoration(
-                  hintText: 'Search users',
-                  hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
+              onChanged: (v) => setState(() => query = v),
             ),
           ),
-          const SizedBox(height: 8),
+          if (working) const LinearProgressIndicator(),
+          if (error != null)
+            Padding(padding: const EdgeInsets.all(16), child: Text(error!)),
           Expanded(
-            child: items.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No users found',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : visible.isEmpty
+                ? const Center(child: Text('No users to display'))
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: items.length,
+                    itemCount: visible.length,
                     itemBuilder: (context, i) {
-                      var u = items[i];
-                      var realIdx = _users.indexOf(u);
-                      var isAdm = u['role'] == 'Admin';
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
+                      final user = visible[i];
+                      final name = (user['name'] ?? '').toString();
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Text(
+                            name.isEmpty ? 'U' : name[0].toUpperCase(),
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor:
-                                  _palette[realIdx % _palette.length],
-                              child: Text(
-                                u['name'].toString().substring(0, 1),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    u['name'].toString(),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                        title: Text(
+                          name.isEmpty ? user['email'].toString() : name,
+                        ),
+                        subtitle: Text(
+                          '${user['email']}\n${user['role']} • ${user['removed'] == true
+                              ? 'Removed from bookstore'
+                              : user['disabled'] == true
+                              ? 'Blocked'
+                              : 'Active'}',
+                        ),
+                        isThreeLine: true,
+                        trailing: user['protected'] == true
+                            ? const Icon(
+                                Icons.shield_outlined,
+                                semanticLabel: 'Protected account',
+                              )
+                            : PopupMenuButton<String>(
+                                enabled: !working,
+                                onSelected: (v) => action(user, v),
+                                itemBuilder: (_) => [
+                                  if (user['removed'] == true)
+                                    const PopupMenuItem(
+                                      value: 'restore',
+                                      child: Text('Restore bookstore access'),
+                                    )
+                                  else ...[
+                                    PopupMenuItem(
+                                      value: 'role',
+                                      enabled: user['disabled'] != true,
+                                      child: Text(
+                                        user['role'] == 'Admin'
+                                            ? 'Make customer'
+                                            : 'Make admin',
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    u['email'].toString(),
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 11,
+                                    PopupMenuItem(
+                                      value: 'disable',
+                                      child: Text(
+                                        user['disabled'] == true
+                                            ? 'Unblock bookstore access'
+                                            : 'Block bookstore access',
+                                      ),
                                     ),
-                                  ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('Remove from bookstore'),
+                                    ),
+                                  ],
                                 ],
                               ),
-                            ),
-                            GestureDetector(
-                              onTap: () => _toggleRole(realIdx),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isAdm
-                                      ? const Color(0xFF1F3A2E)
-                                      : Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  u['role'].toString(),
-                                  style: TextStyle(
-                                    color: isAdm
-                                        ? Colors.white
-                                        : Colors.black87,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                size: 18,
-                                color: Colors.grey,
-                              ),
-                              onPressed: () => _confirmDelete(realIdx),
-                            ),
-                          ],
-                        ),
                       );
                     },
                   ),

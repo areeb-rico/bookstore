@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/book.dart';
 import '../user_session.dart';
+import '../../services/auth_service.dart';
+import '../../services/admin_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final List<Book> allBooks;
@@ -17,11 +19,27 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _refreshUsers();
+  }
+
+  Future<void> _refreshUsers() async {
+    final uid = UserSession.uid;
+    try {
+      final records = await AdminService.instance.listUsers();
+      if (!mounted || UserSession.uid != uid) return;
+      setState(() => UserSession.setUsersFromRecords(records));
+    } catch (_) {
+      if (mounted) _toast('User count could not be refreshed.');
+    }
+  }
+
   int get _books => widget.allBooks.length;
   int get _users => UserSession.users.length;
   int get _orders => widget.orders.length;
-  double get _revenue =>
-      widget.orders.fold(0.0, (sum, o) => sum + o.total);
+  double get _revenue => widget.orders.fold(0.0, (sum, o) => sum + o.total);
 
   List<Map<String, dynamic>> get _recent => widget.orders
       .take(3)
@@ -66,7 +84,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
-    if (ok == true) _toast('Logged out');
+    if (ok != true || !mounted) return;
+    try {
+      await AuthService.instance.signOut();
+      UserSession.logout();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+    } catch (_) {
+      if (mounted) _toast('Could not sign out. Try again.');
+    }
   }
 
   @override
@@ -116,8 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: RefreshIndicator(
                 color: const Color(0xFF1F3A2E),
                 onRefresh: () async {
-                  await Future.delayed(const Duration(milliseconds: 600));
-                  setState(() {});
+                  await _refreshUsers();
                 },
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -127,24 +152,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       Row(
                         children: [
-                          _stat('$_books', 'Books in catalog', '+24 this week'),
+                          _stat('$_books', 'Books in catalog', 'Live catalog'),
                           const SizedBox(width: 12),
                           _stat(
                             '$_users',
                             'Registered users',
-                            '+131 this week',
+                            'Firebase profiles',
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          _stat('$_orders', 'Orders', '18 pending'),
+                          _stat('$_orders', 'Orders', 'Live order history'),
                           const SizedBox(width: 12),
                           _stat(
                             '\$${(_revenue / 1000).toStringAsFixed(1)}k',
-                            'Revenue (mo)',
-                            '+9% vs last',
+                            'Order value',
+                            'Cash on Delivery',
                           ),
                         ],
                       ),
@@ -175,8 +200,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           const SizedBox(width: 12),
                           _action(
                             Icons.bar_chart,
-                            'Reports',
-                            () => _toast('Reports opened'),
+                            'My profile',
+                            () => _nav('/edit-profile'),
                           ),
                         ],
                       ),
@@ -296,7 +321,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${o['id']} · ${o['name']}',
+                '${o['id']} Â· ${o['name']}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
@@ -304,7 +329,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${o['items']} items · \$${o['price']}',
+                '${o['items']} items Â· \$${o['price']}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
               ),
             ],

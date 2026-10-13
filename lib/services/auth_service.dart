@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'account_policy.dart';
 
 /// Thrown by [AuthService] with a user-friendly [message] that the UI can
 /// show directly in a SnackBar.
@@ -35,12 +36,69 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  DatabaseReference get _usersRef => FirebaseDatabase.instanceFor(
+  DatabaseReference get _rootRef => FirebaseDatabase.instanceFor(
     app: Firebase.app(),
     databaseURL: databaseUrl,
-  ).ref('users');
+  ).ref();
+  DatabaseReference get _usersRef => _rootRef.child('users');
 
   User? get currentUser => _auth.currentUser;
+
+  Stream<Map<String, dynamic>> watchAccess(String uid) => _rootRef
+      .child('accountAccess/$uid')
+      .onValue
+      .map(
+        (event) => event.snapshot.value is Map
+            ? Map<String, dynamic>.from(event.snapshot.value as Map)
+            : <String, dynamic>{},
+      );
+
+  /// Spark roles are protected database records; the bootstrap owner's claim
+  /// remains the trusted starting point. Editable profile roles grant no access.
+  Future<Map<String, dynamic>> loadSession(User user) async {
+    final token = await user.getIdTokenResult(true);
+    final accessSnapshot = await _rootRef
+        .child('accountAccess/${user.uid}')
+        .get();
+    final access = accessSnapshot.value is Map
+        ? Map<String, dynamic>.from(accessSnapshot.value as Map)
+        : <String, dynamic>{};
+    if (access['disabled'] == true || access['removed'] == true) {
+      await _auth.signOut();
+      throw const AuthException(
+        'Your bookstore access is blocked or removed. Contact the administrator.',
+      );
+    }
+    final ownerAdmin =
+        user.uid == bootstrapOwnerUid && token.claims?['admin'] == true;
+    final profile = await fetchUser(user.uid) ?? <String, dynamic>{};
+    if (profile.isEmpty) {
+      profile.addAll({
+        'uid': user.uid,
+        'name': (user.displayName?.trim().length ?? 0) >= 2
+            ? user.displayName!.trim()
+            : 'Reader',
+        'email': user.email ?? '',
+        'phone': '',
+        'role': 'Customer',
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+      });
+      await _usersRef.child(user.uid).set(profile);
+    }
+    // Refresh the profile email after a verified Firebase email change.
+    if (profile.isNotEmpty && profile['email'] != user.email) {
+      await _usersRef.child(user.uid).child('email').set(user.email);
+    }
+    return {
+      ...profile,
+      'uid': user.uid,
+      'name': profile['name'] ?? user.displayName ?? '',
+      'email': user.email ?? '',
+      'phone': profile['phone'] ?? '',
+      'role': ownerAdmin || access['admin'] == true ? 'Admin' : 'Customer',
+      'bootstrapAdmin': ownerAdmin,
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // REGISTER
@@ -67,7 +125,7 @@ class AuthService {
       await _usersRef.child(user.uid).set({
         'uid': user.uid,
         'name': name,
-        'email': email,
+        'email': user.email ?? email,
         'phone': phone,
         'role': 'Customer',
         'createdAt': DateTime.now().toIso8601String(),
@@ -116,14 +174,7 @@ class AuthService {
         );
       }
 
-      return await fetchUser(user.uid) ??
-          {
-            'uid': user.uid,
-            'name': user.displayName ?? '',
-            'email': user.email ?? '',
-            'phone': '',
-            'role': 'Customer',
-          };
+      return await loadSession(_auth.currentUser!);
     } on AuthException {
       rethrow;
     } on FirebaseAuthException catch (e) {
@@ -153,7 +204,9 @@ class AuthService {
       final user = credential.user!;
       if (user.emailVerified) {
         await _auth.signOut();
-        throw const AuthException('This email is already verified. Please log in.');
+        throw const AuthException(
+          'This email is already verified. Please log in.',
+        );
       }
       await user.sendEmailVerification();
       await _auth.signOut();
@@ -194,9 +247,7 @@ class AuthService {
     final snapshot = await _usersRef.get();
     if (!snapshot.exists || snapshot.value == null) return [];
     final raw = Map<String, dynamic>.from(snapshot.value as Map);
-    return raw.values
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+    return raw.values.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
   // ---------------------------------------------------------------------------

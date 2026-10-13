@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'models/book.dart';
@@ -9,239 +10,293 @@ import 'screens/browser.dart';
 import 'screens/liked.dart';
 import 'screens/cart.dart';
 import 'screens/profile.dart';
+import 'screens/notifications.dart';
 import 'screens/user_session.dart';
 import 'screens/admin/dashboard_screen.dart';
 import 'screens/admin/manage_books_screen.dart';
 import 'screens/admin/manage_users_screen.dart';
 import 'screens/admin/manage_orders_screen.dart';
-import 'screens/admin/edit_profile_screen.dart';
+import 'services/user_data_service.dart';
+
+import 'services/store_controller.dart';
+import 'services/store_repository.dart';
+
+import 'services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const BookStoreApp());
 }
 
 class BookStoreApp extends StatefulWidget {
-  const BookStoreApp({super.key});
-
+  const BookStoreApp({super.key, this.store, this.initialRoute = '/'});
+  final StoreController? store;
+  final String initialRoute;
   @override
   State<BookStoreApp> createState() => _BookStoreAppState();
 }
 
 class _BookStoreAppState extends State<BookStoreApp> {
-  // Shared state across the app
-  final List<Book> allBooks = [
-    Book(
-      id: '1',
-      title: 'The Silent Patient',
-      author: 'Alex Michaelides',
-      price: 12.99,
-      rating: 4.8,
-      category: 'Mystery',
-      imageUrl:
-          'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300&auto=format&fit=crop',
-      description:
-          'Alicia Berenson’s life is seemingly perfect. One evening, she shoots her husband five times in the face, and then never speaks another word.',
-    ),
-    Book(
-      id: '2',
-      title: 'Project Hail Mary',
-      author: 'Andy Weir',
-      price: 16.00,
-      rating: 4.8,
-      category: 'Sci-Fi',
-      imageUrl:
-          'https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=300&auto=format&fit=crop',
-      description:
-          'Ryland Grace is the sole survivor on a desperate, last-chance mission—and if he fails, humanity and the earth itself will perish.',
-    ),
-    Book(
-      id: '3',
-      title: 'Atomic Habits',
-      author: 'James Clear',
-      price: 18.50,
-      rating: 4.9,
-      category: 'History',
-      imageUrl:
-          'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?q=80&w=300&auto=format&fit=crop',
-      description:
-          'An easy & proven way to build good habits & break bad ones. Learn how tiny changes lead to remarkable results.',
-    ),
-    Book(
-      id: '4',
-      title: 'To Kill a Mockingbird',
-      author: 'Harper Lee',
-      price: 14.20,
-      rating: 4.7,
-      category: 'Fiction',
-      imageUrl:
-          'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop',
-      description:
-          'The unforgettable novel of a childhood in a sleepy Southern town and the crisis of conscience that rocked it.',
-    ),
-    Book(
-      id: '5',
-      title: 'The Design of Everyday Things',
-      author: 'Don Norman',
-      price: 21.00,
-      rating: 4.6,
-      category: 'History',
-      imageUrl:
-          'https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=300&auto=format&fit=crop',
-      description:
-          'Even the smartest among us can feel inept as we try to figure out which light switch or oven burner to turn on.',
-    ),
-    Book(
-      id: '6',
-      title: 'The Book of Art',
-      author: 'E. H. Gombrich',
-      price: 25.00,
-      rating: 4.9,
-      category: 'History',
-      imageUrl:
-          'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=300&auto=format&fit=crop',
-      description:
-          'A classic introduction to art history, bringing the world of fine art and architecture to life.',
-    ),
-  ];
-
-  final List<CartItem> cartItems = [];
-  final List<Order> orders = [];
-  final Set<String> savedBookIds = {'1'};
-
-  void addToCart(Book book) {
-    setState(() {
-      final existingIndex = cartItems.indexWhere(
-        (item) => item.book.id == book.id,
-      );
-
-      if (existingIndex >= 0) {
-        cartItems[existingIndex].quantity++;
-      } else {
-        cartItems.add(CartItem(book: book));
-      }
-    });
-  }
-
-  void toggleSaveBook(String bookId) {
-    setState(() {
-      if (savedBookIds.contains(bookId)) {
-        savedBookIds.remove(bookId);
-      } else {
-        savedBookIds.add(bookId);
-      }
-    });
-  }
-
-  void clearCart() {
-    setState(() {
-      cartItems.clear();
-    });
-  }
-
-  void placeOrder(String shippingAddress, double total) {
-    setState(() {
-      orders.insert(
-        0,
-        Order(
-          id: '#ORD-${DateTime.now().millisecondsSinceEpoch}',
-          items: List<CartItem>.from(cartItems),
-          total: total,
-          shippingAddress: shippingAddress,
-          date: DateTime.now(),
+  late final StoreController store;
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+  final _navigator = GlobalKey<NavigatorState>();
+  StreamSubscription<Map<String, dynamic>>? _accessSubscription;
+  StreamSubscription<Order>? _orderAlerts;
+  int _accessGeneration = 0;
+  @override
+  void initState() {
+    super.initState();
+    store = widget.store ?? StoreController(FirebaseStoreRepository());
+    _orderAlerts = store.orderUpdates.listen((order) {
+      if (!mounted ||
+          order.userId != UserSession.uid ||
+          !UserSession.pushNotifications)
+        return;
+      _messenger.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Order ${order.id}: ${order.status}'),
+          action: SnackBarAction(
+            label: 'View',
+            onPressed: () =>
+                _navigator.currentState?.pushNamed('/notifications'),
+          ),
         ),
       );
-
-      cartItems.clear();
     });
+    UserSession.changes.addListener(_sessionChanged);
+    _sessionChanged();
+  }
+
+  void _sessionChanged() {
+    final generation = ++_accessGeneration;
+    _accessSubscription?.cancel();
+    final uid = UserSession.uid;
+    if (uid.isNotEmpty) {
+      _accessSubscription = AuthService.instance
+          .watchAccess(uid)
+          .listen(
+            (access) async {
+              if (!mounted ||
+                  generation != _accessGeneration ||
+                  UserSession.uid != uid)
+                return;
+              if (access['disabled'] == true || access['removed'] == true) {
+                // Clear local state even if an offline Firebase sign-out fails.
+                UserSession.logout();
+                _navigator.currentState?.pushNamedAndRemoveUntil(
+                  '/login',
+                  (_) => false,
+                );
+                _messenger.currentState?.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Your bookstore access has been blocked or removed.',
+                    ),
+                  ),
+                );
+                try {
+                  await AuthService.instance.signOut();
+                } catch (_) {}
+                return;
+              }
+              final role = UserSession.bootstrapAdmin || access['admin'] == true
+                  ? 'Admin'
+                  : 'Customer';
+              if (role != UserSession.role) {
+                UserSession.role = role;
+                UserSession.changes.value++;
+                _navigator.currentState?.pushNamedAndRemoveUntil(
+                  role == 'Admin' ? '/admin-dashboard' : '/main_shell',
+                  (_) => false,
+                );
+              }
+            },
+            onError: (Object _) {
+              // Store/profile streams show retry UI; permissions remain enforced by rules.
+            },
+          );
+    } else {
+      _accessSubscription = null;
+    }
+    store.bind(UserSession.uid, admin: UserSession.isAdmin);
+    UserDataService.instance.bind(UserSession.uid);
   }
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: UserSession.darkMode,
-      builder: (context, isDark, child) {
-        return MaterialApp(
-          title: 'Book Store',
-          debugShowCheckedModeBanner: false,
-
-          // Light theme
-          theme: ThemeData(
-            brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFF5F5F0),
-            primaryColor: const Color(0xFF1E4D3B),
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1E4D3B),
-              primary: const Color(0xFF1E4D3B),
-              surface: const Color(0xFFF5F5F0),
-              brightness: Brightness.light,
-            ),
-            fontFamily: 'serif',
-            useMaterial3: true,
-          ),
-
-          // Dark theme
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xFF121212),
-            primaryColor: const Color(0xFF1E4D3B),
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1E4D3B),
-              primary: const Color(0xFF5FAF91),
-              surface: const Color(0xFF1E1E1E),
-              brightness: Brightness.dark,
-            ),
-            fontFamily: 'serif',
-            useMaterial3: true,
-          ),
-
-          themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-
-          initialRoute: '/',
-          routes: {
-            '/': (context) => const AuthGate(),
-            '/login': (context) => const LoginScreen(),
-            '/main_shell': (context) => MainNavigationShell(
-              allBooks: allBooks,
-              cartItems: cartItems,
-              orders: orders,
-              savedBookIds: savedBookIds,
-              onAddToCart: addToCart,
-              onToggleSave: toggleSaveBook,
-            ),
-            '/cart': (context) => CartScreen(
-              cartItems: cartItems,
-              onPlaceOrder: placeOrder,
-              onQuantityChanged: () => setState(() {}),
-            ),
-
-            // Admin panel
-            '/admin-dashboard': (context) =>
-                DashboardScreen(allBooks: allBooks, orders: orders),
-            '/manage-books': (context) => ManageBooksScreen(allBooks: allBooks),
-            '/manage-users': (context) => const ManageUsersScreen(),
-            '/manage-orders': (context) => ManageOrdersScreen(orders: orders),
-            '/edit-profile': (context) => const EditProfileScreen(),
-          },
-        );
-      },
-    );
+  void dispose() {
+    _accessGeneration++;
+    _accessSubscription?.cancel();
+    UserSession.changes.removeListener(_sessionChanged);
+    _orderAlerts?.cancel();
+    if (widget.store == null) store.dispose();
+    super.dispose();
   }
+
+  Future<void> _write(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {
+      _messenger.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Changes could not be saved. Check your connection and try again.',
+          ),
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  Widget _live(Widget Function() page, {bool admin = false}) => AnimatedBuilder(
+    animation: Listenable.merge([store, UserSession.profileChanges]),
+    builder: (context, _) {
+      if (!UserSession.isLoggedIn || (admin && !UserSession.isAdmin)) {
+        return const LoginScreen();
+      }
+      if (store.loading) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (store.error != null) {
+        return Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(store.error!, textAlign: TextAlign.center),
+                TextButton(
+                  onPressed: _sessionChanged,
+                  child: const Text('Retry'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await AuthService.instance.signOut();
+                    UserSession.logout();
+                    if (context.mounted) {
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        '/login',
+                        (_) => false,
+                      );
+                    }
+                  },
+                  child: const Text('Sign out'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      return page();
+    },
+  );
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: UserSession.darkMode,
+    builder: (context, dark, _) => MaterialApp(
+      title: 'Book Store',
+      debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: _messenger,
+      navigatorKey: _navigator,
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: 'serif',
+        scaffoldBackgroundColor: const Color(0xFFF5F5F0),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1E4D3B)),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF5FAF91),
+          brightness: Brightness.dark,
+        ),
+      ),
+      themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+      initialRoute: widget.initialRoute,
+      onGenerateInitialRoutes: (route) => [
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: route),
+          builder: (_) =>
+              route == '/login' ? const LoginScreen() : const AuthGate(),
+        ),
+      ],
+      routes: {
+        '/': (_) => const AuthGate(),
+        '/login': (_) => const LoginScreen(),
+        '/main_shell': (_) => _live(
+          () => MainNavigationShell(
+            key: ValueKey(UserSession.uid),
+            dataUpdates: store,
+            allBooks: store.books,
+            cartItems: store.cart,
+            orders: store.orders,
+            savedBookIds: store.savedIds,
+            onAddToCart: (book) => _write(() => store.addToCart(book)),
+            onToggleSave: (id) => _write(() => store.toggleSaved(id)),
+          ),
+        ),
+        '/cart': (_) => _live(
+          () => CartScreen(
+            cartItems: store.cart,
+            currentQuote: (promoCode) => store.quote(promoCode: promoCode),
+            updates: store,
+            unavailableCartIds: store.unavailableCartIds,
+            onRemoveUnavailable: () => _write(store.removeUnavailableItems),
+            onPlaceOrder: store.placeOrder,
+            onQuantityChanged: (book, quantity) =>
+                _write(() => store.setQuantity(book, quantity)),
+          ),
+        ),
+        '/admin-dashboard': (_) => _live(
+          () => DashboardScreen(allBooks: store.books, orders: store.orders),
+          admin: true,
+        ),
+        '/notifications': (_) => _live(
+          () => NotificationsScreen(orders: store.orders, updates: store),
+        ),
+        '/manage-books': (_) => _live(
+          () => ManageBooksScreen(
+            allBooks: store.books,
+            repository: store.repository,
+          ),
+          admin: true,
+        ),
+        '/manage-users': (_) =>
+            _live(() => const ManageUsersScreen(), admin: true),
+        '/manage-orders': (_) => _live(
+          () => ManageOrdersScreen(
+            orders: store.orders,
+            repository: store.repository,
+          ),
+          admin: true,
+        ),
+        '/edit-profile': (_) => _live(
+          () => ProfileScreen(
+            orders: store.orders
+                .where((o) => o.userId == UserSession.uid)
+                .toList(),
+            orderUpdates: store,
+          ),
+          admin: true,
+        ),
+      },
+    ),
+  );
 }
 
 class MainNavigationShell extends StatefulWidget {
+  final Listenable dataUpdates;
   final List<Book> allBooks;
   final List<CartItem> cartItems;
   final List<Order> orders;
   final Set<String> savedBookIds;
-  final Function(Book) onAddToCart;
-  final Function(String) onToggleSave;
+  final Future<void> Function(Book) onAddToCart;
+  final Future<void> Function(String) onToggleSave;
 
   const MainNavigationShell({
     super.key,
+    required this.dataUpdates,
     required this.allBooks,
     required this.cartItems,
     required this.orders,
@@ -281,7 +336,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         onAddToCart: widget.onAddToCart,
         onToggleSave: widget.onToggleSave,
       ),
-      ProfileScreen(orders: widget.orders),
+      ProfileScreen(orders: widget.orders, orderUpdates: widget.dataUpdates),
     ];
 
     return Scaffold(

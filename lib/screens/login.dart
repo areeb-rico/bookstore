@@ -36,22 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = emailController.text.trim();
     final password = passwordController.text;
 
-    // 1) Static admin login — same UI, no separate screen.
-    if (UserSession.isAdminCredentials(email, password)) {
-      UserSession.setAdminSession();
-      // Best-effort: load real users for the admin panel.
-      try {
-        final records = await AuthService.instance.fetchAllUsers();
-        UserSession.setUsersFromRecords(records);
-      } catch (_) {
-        // Ignore — admin can still open the panel without the live list.
-      }
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/admin-dashboard');
-      return;
-    }
-
-    // 2) Normal Firebase user login.
     setState(() => isLoading = true);
 
     try {
@@ -62,7 +46,10 @@ class _LoginScreenState extends State<LoginScreen> {
       UserSession.setCurrentUser(userData);
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/main_shell');
+      Navigator.pushReplacementNamed(
+        context,
+        UserSession.isAdmin ? '/admin-dashboard' : '/main_shell',
+      );
     } on AuthException catch (e) {
       if (!mounted) return;
       _showError(e.message, resendFor: e.message.contains('verify'));
@@ -76,10 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       SnackBar(
         content: Text(message),
         action: resendFor
-            ? SnackBarAction(
-                label: 'Resend',
-                onPressed: _resendVerification,
-              )
+            ? SnackBarAction(label: 'Resend', onPressed: _resendVerification)
             : null,
       ),
     );
@@ -193,21 +177,27 @@ class _LoginScreenState extends State<LoginScreen> {
                           : () async {
                               final email = forgotEmailController.text.trim();
                               if (email.isEmpty ||
-                                  !RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                                      .hasMatch(email)) {
+                                  !RegExp(
+                                    r'^[^@]+@[^@]+\.[^@]+',
+                                  ).hasMatch(email)) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Please enter a valid email.'),
+                                    content: Text(
+                                      'Please enter a valid email.',
+                                    ),
                                   ),
                                 );
                                 return;
                               }
 
                               setModalState(() => sending = true);
-                              final messenger = ScaffoldMessenger.of(this.context);
+                              final messenger = ScaffoldMessenger.of(
+                                this.context,
+                              );
                               try {
-                                await AuthService.instance
-                                    .sendPasswordReset(email);
+                                await AuthService.instance.sendPasswordReset(
+                                  email,
+                                );
                                 if (sheetContext.mounted) {
                                   Navigator.pop(sheetContext);
                                 }
@@ -342,8 +332,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Enter your email';
                           }
-                          if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                              .hasMatch(value.trim())) {
+                          if (!RegExp(
+                            r'^[^@]+@[^@]+\.[^@]+',
+                          ).hasMatch(value.trim())) {
                             return 'Enter a valid email';
                           }
                           return null;
@@ -464,24 +455,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                   final email = emailController.text.trim();
 
-                                  // The admin email is reserved for the static
-                                  // admin login — it can't be registered.
-                                  if (email.toLowerCase() ==
-                                      UserSession.adminEmail) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'This email is reserved. Please use a '
-                                          'different email.',
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-
                                   setModalState(() => submitting = true);
-                                  final messenger =
-                                      ScaffoldMessenger.of(this.context);
+                                  final messenger = ScaffoldMessenger.of(
+                                    this.context,
+                                  );
                                   try {
                                     await AuthService.instance.register(
                                       name: nameController.text.trim(),
@@ -615,8 +592,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Enter your email';
                         }
-                        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                            .hasMatch(value.trim())) {
+                        if (!RegExp(
+                          r'^[^@]+@[^@]+\.[^@]+',
+                        ).hasMatch(value.trim())) {
                           return 'Enter a valid email';
                         }
                         return null;

@@ -1,1243 +1,658 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/book.dart';
+import '../models/checkout.dart';
+import '../services/user_data_service.dart';
 import 'user_session.dart';
 
 class CartScreen extends StatefulWidget {
-  final List<CartItem> cartItems;
-  final void Function(String shippingAddress, double total) onPlaceOrder;
-  final VoidCallback onQuantityChanged;
-
   const CartScreen({
     super.key,
     required this.cartItems,
+    required this.currentQuote,
     required this.onPlaceOrder,
     required this.onQuantityChanged,
+    required this.updates,
+    required this.unavailableCartIds,
+    required this.onRemoveUnavailable,
   });
-
+  final List<CartItem> cartItems;
+  final CheckoutQuote Function(String promoCode) currentQuote;
+  final Future<Order> Function(CheckoutRequest) onPlaceOrder;
+  final Future<void> Function(Book, int) onQuantityChanged;
+  final Listenable updates;
+  final List<String> unavailableCartIds;
+  final Future<void> Function() onRemoveUnavailable;
   @override
   State<CartScreen> createState() => _CartScreenState();
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final TextEditingController promoController = TextEditingController();
-
-  double discount = 0.0;
-  String promoStatus = '';
-
-  void applyPromo() {
-    if (promoController.text.trim().toUpperCase() == 'SAVE10') {
-      setState(() {
-        discount = 0.10;
-        promoStatus = '10% Promo discount applied!';
-      });
-    } else {
-      setState(() {
-        discount = 0.0;
-        promoStatus = 'Invalid promo code (Try "SAVE10")';
-      });
+  final promo = TextEditingController();
+  String promoCode = '', promoMessage = '';
+  bool updating = false, checkoutOpen = false;
+  void message(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  Future<void> change(Future<void> Function() action) async {
+    if (updating || checkoutOpen) return;
+    setState(() => updating = true);
+    try {
+      await action();
+    } catch (_) {
+      if (mounted) message('Cart could not be updated. Please retry.');
+    } finally {
+      if (mounted) setState(() => updating = false);
     }
+  }
+
+  void applyPromo() => setState(() {
+    promoCode = promo.text.trim().toUpperCase() == 'SAVE10' ? 'SAVE10' : '';
+    promoMessage = promoCode.isEmpty
+        ? 'Use SAVE10 for 10% off, or checkout without a promo.'
+        : 'SAVE10 applied: 10% off.';
+  });
+  Future<void> openCheckout() async {
+    if (checkoutOpen || updating) return;
+    if (widget.unavailableCartIds.isNotEmpty) {
+      message('Remove unavailable books before checkout.');
+      return;
+    }
+    final quote = widget.currentQuote(promoCode);
+    try {
+      quote.validate();
+    } on StateError catch (e) {
+      message(e.message.toString());
+      return;
+    }
+    setState(() => checkoutOpen = true);
+    final done = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => CheckoutSheet(
+        quote: quote,
+        updates: widget.updates,
+        latestQuote: () => widget.currentQuote(promoCode),
+        onOrderPlaced: widget.onPlaceOrder,
+      ),
+    );
+    if (!mounted) return;
+    setState(() => checkoutOpen = false);
+    if (done == true) Navigator.pop(context);
   }
 
   @override
   void dispose() {
-    promoController.dispose();
+    promo.dispose();
     super.dispose();
-  }
-
-  void openCheckout(double total) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return CheckoutSheet(
-          total: total,
-          onOrderPlaced: (shippingAddress) {
-            widget.onPlaceOrder(shippingAddress, total);
-
-            Navigator.pop(context); // Close checkout
-            Navigator.pop(context); // Back from cart
-          },
-        );
-      },
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    double subtotal = widget.cartItems.fold(
-      0,
-      (sum, item) => sum + (item.book.price * item.quantity),
-    );
-
-    double discountAmount = subtotal * discount;
-    double total = subtotal - discountAmount;
-
+    final quote = widget.currentQuote(promoCode);
+    final unavailable = widget.unavailableCartIds.isNotEmpty;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F0),
-
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F5F0),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Your Cart',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-      ),
-
-      body: widget.cartItems.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.shopping_bag_outlined,
-                    size: 64,
-                    color: Colors.black38,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Your cart is empty',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
+      appBar: AppBar(title: const Text('Your cart')),
+      body: Column(
+        children: [
+          if (unavailable)
+            MaterialBanner(
+              content: const Text(
+                'Some books in your cart are no longer available.',
               ),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
+              actions: [
+                TextButton(
+                  onPressed: updating
+                      ? null
+                      : () => change(widget.onRemoveUnavailable),
+                  child: const Text('Remove unavailable'),
+                ),
+              ],
+            ),
+          Expanded(
+            child: widget.cartItems.isEmpty
+                ? const Center(child: Text('Your cart is empty'))
+                : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: widget.cartItems.length,
                     itemBuilder: (context, index) {
                       final item = widget.cartItems[index];
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: Image.network(
-                                item.book.imageUrl,
-                                width: 60,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(
-                                      width: 60,
-                                      height: 80,
-                                      color: const Color(0xFFF5F5F0),
-                                      alignment: Alignment.center,
-                                      child: const Icon(
-                                        Icons.menu_book,
-                                        color: Colors.black45,
-                                        size: 24,
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: Image.network(
+                                  item.book.imageUrl,
+                                  width: 55,
+                                  height: 75,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, error, stack) =>
+                                      const SizedBox(
+                                        width: 55,
+                                        height: 75,
+                                        child: Icon(Icons.menu_book),
                                       ),
-                                    ),
+                                ),
                               ),
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.book.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.book.title,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
                                     ),
-                                  ),
-
-                                  const SizedBox(height: 5),
-
-                                  Text(
-                                    '\$${item.book.price.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF1E4D3B),
-                                      fontWeight: FontWeight.bold,
+                                    Text(
+                                      '\$${(item.book.priceMinor / 100).toStringAsFixed(2)} each',
                                     ),
-                                  ),
-                                ],
+                                    Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        IconButton(
+                                          tooltip: item.quantity == 1
+                                              ? 'Remove book'
+                                              : 'Decrease quantity',
+                                          onPressed: updating || checkoutOpen
+                                              ? null
+                                              : () => change(
+                                                  () =>
+                                                      widget.onQuantityChanged(
+                                                        item.book,
+                                                        item.quantity - 1,
+                                                      ),
+                                                ),
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                          ),
+                                        ),
+                                        Text('${item.quantity}'),
+                                        IconButton(
+                                          tooltip: 'Increase quantity',
+                                          onPressed:
+                                              updating ||
+                                                  checkoutOpen ||
+                                                  item.quantity >= 99
+                                              ? null
+                                              : () => change(
+                                                  () =>
+                                                      widget.onQuantityChanged(
+                                                        item.book,
+                                                        item.quantity + 1,
+                                                      ),
+                                                ),
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline),
-                                  onPressed: () {
-                                    if (item.quantity > 1) {
-                                      item.quantity--;
-                                    } else {
-                                      widget.cartItems.removeAt(index);
-                                    }
-
-                                    widget.onQuantityChanged();
-                                    setState(() {});
-                                  },
-                                ),
-
-                                Text(
-                                  '${item.quantity}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline),
-                                  onPressed: () {
-                                    item.quantity++;
-
-                                    widget.onQuantityChanged();
-                                    setState(() {});
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
+                              Text(
+                                '\$${(item.book.priceMinor * item.quantity / 100).toStringAsFixed(2)}',
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
                   ),
-                ),
-
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(20),
-                    ),
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    child: Column(
+          ),
+          if (widget.cartItems.isNotEmpty)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: promoController,
-                                decoration: InputDecoration(
-                                  hintText: 'Promo code e.g. SAVE10',
-                                  isDense: true,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            ElevatedButton(
-                              onPressed: applyPromo,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E4D3B),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 15,
-                                  horizontal: 16,
-                                ),
-                              ),
-                              child: const Text(
-                                'Apply',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        if (promoStatus.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                promoStatus,
-                                style: TextStyle(
-                                  color: discount > 0
-                                      ? Colors.green
-                                      : Colors.red,
-                                  fontSize: 12,
-                                ),
-                              ),
+                        Expanded(
+                          child: TextField(
+                            controller: promo,
+                            enabled: !checkoutOpen,
+                            decoration: const InputDecoration(
+                              labelText: 'Promo code',
+                              hintText: 'SAVE10',
+                              border: OutlineInputBorder(),
                             ),
                           ),
-
-                        const Divider(height: 24),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Subtotal'),
-                            Text('\$${subtotal.toStringAsFixed(2)}'),
-                          ],
                         ),
-
-                        if (discount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Discount (10%)',
-                                  style: TextStyle(color: Colors.green),
-                                ),
-                                Text(
-                                  '-\$${discountAmount.toStringAsFixed(2)}',
-                                  style: const TextStyle(color: Colors.green),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        const SizedBox(height: 8),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Total',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '\$${total.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E4D3B),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => openCheckout(total),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E4D3B),
-                              padding: const EdgeInsets.symmetric(vertical: 15),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'Checkout Now',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: checkoutOpen ? null : applyPromo,
+                          child: const Text('Apply'),
                         ),
                       ],
                     ),
-                  ),
+                    if (promoMessage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(promoMessage),
+                      ),
+                    const SizedBox(height: 10),
+                    _amount('Subtotal', quote.subtotalMinor),
+                    if (promoCode.isNotEmpty)
+                      _amount(
+                        'Discount (10%)',
+                        quote.subtotalMinor - quote.totalMinor,
+                        discount: true,
+                      ),
+                    _amount('Total', quote.totalMinor),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: updating || checkoutOpen || unavailable
+                            ? null
+                            : openCheckout,
+                        child: const Text('Checkout Now'),
+                      ),
+                    ),
+                    const Text(
+                      'Cash on Delivery • Up to 20 different books per order',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
+        ],
+      ),
     );
   }
+
+  Widget _amount(String label, int amount, {bool discount = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label),
+        Text('${discount ? '-' : ''}\$${(amount / 100).toStringAsFixed(2)}'),
+      ],
+    ),
+  );
 }
 
-// ============================================================
-// CHECKOUT SHEET
-// ============================================================
-
 class CheckoutSheet extends StatefulWidget {
-  final double total;
-  final void Function(String shippingAddress) onOrderPlaced;
-
   const CheckoutSheet({
     super.key,
-    required this.total,
+    required this.quote,
     required this.onOrderPlaced,
+    required this.updates,
+    required this.latestQuote,
   });
-
+  final CheckoutQuote quote;
+  final Future<Order> Function(CheckoutRequest) onOrderPlaced;
+  final Listenable updates;
+  final CheckoutQuote Function() latestQuote;
   @override
   State<CheckoutSheet> createState() => _CheckoutSheetState();
 }
 
 class _CheckoutSheetState extends State<CheckoutSheet> {
-  int currentStep = 0;
+  final form = GlobalKey<FormState>();
+  final name = TextEditingController(),
+      phone = TextEditingController(),
+      address = TextEditingController(),
+      area = TextEditingController(),
+      city = TextEditingController();
+  int step = 0;
+  bool submitting = false, waiting = false, saveAddress = false;
+  String? error, addressSaveMessage;
+  Timer? waitTimer;
+  CheckoutRequest? attempt;
+  Order? confirmed;
+  bool get stale =>
+      widget.latestQuote().fingerprint != widget.quote.fingerprint;
+  DeliveryContact get delivery => DeliveryContact(
+    name: name.text.trim(),
+    phone: phone.text.trim(),
+    address: address.text.trim(),
+    area: area.text.trim(),
+    city: city.text.trim(),
+  );
+  @override
+  void initState() {
+    super.initState();
+    name.text = UserSession.name;
+    phone.text = UserSession.phone;
+    widget.updates.addListener(changed);
+    UserSession.profileChanges.addListener(changed);
+  }
 
-  final _addressFormKey = GlobalKey<FormState>();
-  final _cardFormKey = GlobalKey<FormState>();
-
-  final nameController = TextEditingController();
-  final phoneController = TextEditingController();
-  final addressController = TextEditingController();
-  final cityController = TextEditingController();
-  final areaController = TextEditingController();
-
-  final cardHolderController = TextEditingController();
-  final cardNumberController = TextEditingController();
-  final expiryController = TextEditingController();
-  final cvvController = TextEditingController();
-
-  String paymentMethod = 'Card';
+  void changed() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
-    nameController.dispose();
-    phoneController.dispose();
-    addressController.dispose();
-    cityController.dispose();
-    areaController.dispose();
-
-    cardHolderController.dispose();
-    cardNumberController.dispose();
-    expiryController.dispose();
-    cvvController.dispose();
-
+    waitTimer?.cancel();
+    widget.updates.removeListener(changed);
+    UserSession.profileChanges.removeListener(changed);
+    for (final controller in [name, phone, address, area, city]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
-  void nextStep() {
-    if (currentStep == 0) {
-      if (_addressFormKey.currentState!.validate()) {
-        setState(() {
-          currentStep = 1;
-        });
-      }
+  Future<void> next() async {
+    if (submitting || confirmed != null) return;
+    if (step == 0) {
+      if (stale) return;
+      if (form.currentState!.validate()) setState(() => step = 1);
       return;
     }
-
-    if (currentStep == 1) {
-      if (paymentMethod == 'Card') {
-        if (!_cardFormKey.currentState!.validate()) {
-          return;
+    if (stale && attempt == null) return;
+    attempt ??= CheckoutRequest(quote: widget.quote, delivery: delivery);
+    setState(() {
+      submitting = true;
+      error = null;
+      waiting = false;
+    });
+    waitTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted && submitting) setState(() => waiting = true);
+    });
+    try {
+      final receipt = await widget.onOrderPlaced(attempt!);
+      if (!mounted || widget.quote.uid != UserSession.uid) return;
+      setState(() => confirmed = receipt);
+      if (saveAddress) {
+        final data = receipt.deliveryContact?.toMap();
+        if (data != null &&
+            !UserSession.shippingAddresses.any(
+              (saved) => data.entries.every((e) => saved[e.key] == e.value),
+            )) {
+          try {
+            await UserDataService.instance.saveAddress(data);
+          } catch (_) {
+            if (mounted)
+              setState(
+                () => addressSaveMessage =
+                    'Order saved. The address could not be added to your profile.',
+              );
+          }
         }
       }
-
-      showOrderConfirmation();
+    } catch (e) {
+      if (mounted)
+        setState(
+          () => error = e is CheckoutException
+              ? e.message
+              : e is StateError
+              ? e.message.toString()
+              : 'Order confirmation could not be received. Retry the same order or check your order history.',
+        );
+    } finally {
+      waitTimer?.cancel();
+      if (mounted) setState(() => submitting = false);
     }
   }
 
-  void showOrderConfirmation() {
-    showDialog(
+  Future<void> pickAddress() async {
+    final selected = await showModalBottomSheet<Map<String, String>>(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 30),
-              SizedBox(width: 10),
-              Expanded(child: Text('Order Confirmed')),
-            ],
-          ),
-          content: Text(
-            'Your order has been placed successfully.\n\n'
-            'Total: \$${widget.total.toStringAsFixed(2)}\n\n'
-            'Delivery to:\n'
-            '${addressController.text}, '
-            '${areaController.text}, '
-            '${cityController.text}',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                widget.onOrderPlaced(
-                  '${addressController.text}, '
-                  '${areaController.text}, '
-                  '${cityController.text}',
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E4D3B),
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Saved addresses')),
+            for (final saved in UserSession.shippingAddresses)
+              ListTile(
+                title: Text('${saved['name']} • ${saved['phone']}'),
+                subtitle: Text(
+                  '${saved['address']}, ${saved['area']}, ${saved['city']}',
+                ),
+                onTap: () => Navigator.pop(context, saved),
               ),
-              child: const Text('Done', style: TextStyle(color: Colors.white)),
-            ),
           ],
-        );
-      },
+        ),
+      ),
     );
+    if (selected == null || !mounted) return;
+    setState(() {
+      name.text = selected['name'] ?? '';
+      phone.text = selected['phone'] ?? '';
+      address.text = selected['address'] ?? '';
+      area.text = selected['area'] ?? '';
+      city.text = selected['city'] ?? '';
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.92,
-        decoration: const BoxDecoration(
-          color: Color(0xFFF5F5F0),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 45,
-              height: 5,
-              margin: const EdgeInsets.only(top: 10),
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-              child: Row(
-                children: [
-                  if (currentStep > 0)
-                    IconButton(
-                      onPressed: () {
-                        setState(() {
-                          currentStep--;
-                        });
-                      },
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-
-                  Expanded(
-                    child: Text(
-                      currentStep == 0 ? 'Delivery Details' : 'Payment Method',
-                      style: const TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  Text(
-                    '${currentStep + 1}/2',
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-                child: currentStep == 0
-                    ? buildDeliveryForm()
-                    : buildPaymentForm(),
-              ),
-            ),
-
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  const Text(
-                    'Total',
-                    style: TextStyle(fontSize: 15, color: Colors.black54),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Text(
-                    '\$${widget.total.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E4D3B),
-                    ),
-                  ),
-
-                  const Spacer(),
-
-                  ElevatedButton(
-                    onPressed: nextStep,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E4D3B),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 25,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: Text(
-                      currentStep == 0 ? 'Continue' : 'Place Order',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================================
-  // PICK SAVED ADDRESS
-  // ==========================================================
-
-  void _pickSavedAddress() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Saved addresses',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...UserSession.shippingAddresses.map(
-              (addr) => ListTile(
-                leading: const Icon(
-                  Icons.location_on_outlined,
-                  color: Color(0xFF1E4D3B),
-                ),
-                title: Text(addr['address'] ?? ''),
-                subtitle: Text('${addr['area']}, ${addr['city']}'),
-                onTap: () {
-                  setState(() {
-                    nameController.text = addr['name'] ?? '';
-                    phoneController.text = addr['phone'] ?? '';
-                    addressController.text = addr['address'] ?? '';
-                    areaController.text = addr['area'] ?? '';
-                    cityController.text = addr['city'] ?? '';
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================================
-  // DELIVERY FORM
-  // ==========================================================
-
-  Widget buildDeliveryForm() {
-    return Form(
-      key: _addressFormKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const CheckoutInfoCard(
-            icon: Icons.location_on_outlined,
-            title: 'Where should we deliver?',
-            subtitle: 'Enter your delivery details below.',
-          ),
-
-          const SizedBox(height: 20),
-
-          if (UserSession.shippingAddresses.isNotEmpty) ...[
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _pickSavedAddress,
-                icon: const Icon(
-                  Icons.location_on_outlined,
-                  color: Color(0xFF1E4D3B),
-                ),
-                label: const Text(
-                  'Use a saved address',
-                  style: TextStyle(color: Color(0xFF1E4D3B)),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF1E4D3B)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-          ],
-
-          const Text(
-            'Contact information',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-
-          const SizedBox(height: 12),
-
-          buildTextField(
-            controller: nameController,
-            label: 'Full Name',
-            hint: 'e.g. Muhammad Asim',
-            icon: Icons.person_outline,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your name';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          buildTextField(
-            controller: phoneController,
-            label: 'Phone Number',
-            hint: 'e.g. 03001234567',
-            icon: Icons.phone_outlined,
-            keyboardType: TextInputType.phone,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your phone number';
-              }
-
-              if (value.replaceAll(RegExp(r'\D'), '').length < 10) {
-                return 'Enter a valid phone number';
-              }
-
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 22),
-
-          const Text(
-            'Delivery address',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-
-          const SizedBox(height: 12),
-
-          buildTextField(
-            controller: addressController,
-            label: 'Street / House Address',
-            hint: 'House no, street, building etc.',
-            icon: Icons.home_outlined,
-            maxLines: 2,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your address';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          buildTextField(
-            controller: areaController,
-            label: 'Area / Town',
-            hint: 'e.g. Gulshan-e-Iqbal',
-            icon: Icons.location_city_outlined,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your area';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          buildTextField(
-            controller: cityController,
-            label: 'City',
-            hint: 'e.g. Karachi',
-            icon: Icons.location_on_outlined,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your city';
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 18),
-
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF2EE),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline, color: Color(0xFF1E4D3B)),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Make sure your delivery address and phone number are correct.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF1E4D3B)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==========================================================
-  // PAYMENT FORM
-  // ==========================================================
-
-  Widget buildPaymentForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const CheckoutInfoCard(
-          icon: Icons.payment_outlined,
-          title: 'Choose payment method',
-          subtitle: 'Select how you want to pay for your order.',
-        ),
-
-        const SizedBox(height: 18),
-
-        paymentOption(
-          title: 'Credit / Debit Card',
-          subtitle: 'Visa, Mastercard and other cards',
-          icon: Icons.credit_card,
-          value: 'Card',
-        ),
-
-        const SizedBox(height: 10),
-
-        paymentOption(
-          title: 'Cash on Delivery',
-          subtitle: 'Pay when your order arrives',
-          icon: Icons.payments_outlined,
-          value: 'Cash',
-        ),
-
-        if (paymentMethod == 'Card') ...[
-          const SizedBox(height: 22),
-
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.black12),
-            ),
-            child: Form(
-              key: _cardFormKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.credit_card, color: Color(0xFF1E4D3B)),
-                      SizedBox(width: 8),
-                      Text(
-                        'Card Details',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  buildTextField(
-                    controller: cardHolderController,
-                    label: 'Card Holder Name',
-                    hint: 'Name as shown on card',
-                    icon: Icons.person_outline,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Enter card holder name';
-                      }
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  buildTextField(
-                    controller: cardNumberController,
-                    label: 'Card Number',
-                    hint: '1234 5678 9012 3456',
-                    icon: Icons.credit_card,
-                    keyboardType: TextInputType.number,
-                    maxLength: 19,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Enter card number';
-                      }
-
-                      String digits = value.replaceAll(' ', '');
-
-                      if (digits.length < 13 || digits.length > 19) {
-                        return 'Enter a valid card number';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: buildTextField(
-                          controller: expiryController,
-                          label: 'Expiry Date',
-                          hint: 'MM/YY',
-                          icon: Icons.calendar_month_outlined,
-                          keyboardType: TextInputType.number,
-                          maxLength: 5,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Enter expiry';
-                            }
-
-                            if (!RegExp(
-                              r'^(0[1-9]|1[0-2])\/\d{2}$',
-                            ).hasMatch(value.trim())) {
-                              return 'Use MM/YY';
-                            }
-
-                            return null;
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: buildTextField(
-                          controller: cvvController,
-                          label: 'CVV / CVC',
-                          hint: '123',
-                          icon: Icons.lock_outline,
-                          keyboardType: TextInputType.number,
-                          maxLength: 4,
-                          obscureText: true,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Enter CVV';
-                            }
-
-                            if (value.length < 3 || value.length > 4) {
-                              return 'Invalid CVV';
-                            }
-
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.lock_outline, size: 16, color: Colors.black54),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Your card details should be handled securely. For a real payment system, connect this form to a PCI-compliant payment provider instead of storing raw card details.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.black54,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-
-        const SizedBox(height: 18),
-
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
+    final receipt = confirmed;
+    return PopScope(
+      canPop: !submitting,
+      child: SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .9,
+          child: Column(
             children: [
-              const Icon(Icons.location_on_outlined, color: Color(0xFF1E4D3B)),
-              const SizedBox(width: 10),
+              ListTile(
+                title: Text(
+                  receipt != null
+                      ? 'Order Confirmed'
+                      : step == 0
+                      ? 'Delivery Details'
+                      : 'Review your order',
+                ),
+                trailing: IconButton(
+                  tooltip: 'Close checkout',
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.pop(context, receipt != null),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
               Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    0,
+                    20,
+                    MediaQuery.viewInsetsOf(context).bottom + 20,
+                  ),
+                  child: receipt != null
+                      ? confirmation(receipt)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (stale && !submitting)
+                              Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Text(
+                                    attempt == null
+                                        ? 'Your cart or catalog changed. Return to the cart to review the latest prices and quantities.'
+                                        : 'The cart changed. Retry checks whether this order was already saved; it will not place a second order.',
+                                  ),
+                                ),
+                              ),
+                            if (step == 0) deliveryForm() else review(),
+                            if (error != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 16),
+                                child: Text(
+                                  error!,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            if (waiting && submitting)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 16),
+                                child: Text(
+                                  'Waiting for online confirmation. Keep this screen open; do not place the order again.',
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'Delivering to',
-                      style: TextStyle(fontSize: 11, color: Colors.black54),
-                    ),
-                    const SizedBox(height: 3),
                     Text(
-                      '${addressController.text}, '
-                      '${areaController.text}, '
-                      '${cityController.text}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      'Total: \$${((receipt?.totalMinor ?? widget.quote.totalMinor) / 100).toStringAsFixed(2)}',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
+                    const SizedBox(height: 8),
+                    if (receipt != null)
+                      FilledButton(
+                        onPressed: submitting
+                            ? null
+                            : () => Navigator.pop(context, true),
+                        child: const Text('Done'),
+                      )
+                    else
+                      Row(
+                        children: [
+                          if (step > 0 && attempt == null)
+                            TextButton(
+                              onPressed: submitting
+                                  ? null
+                                  : () => setState(() => step = 0),
+                              child: const Text('Edit details'),
+                            ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: submitting || (stale && attempt == null)
+                                ? null
+                                : next,
+                            child: Text(
+                              submitting
+                                  ? 'Saving order...'
+                                  : step == 0
+                                  ? 'Continue'
+                                  : attempt == null
+                                  ? 'Place Order'
+                                  : 'Retry same order',
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
             ],
           ),
         ),
-      ],
-    );
-  }
-
-  // ==========================================================
-  // PAYMENT OPTION
-  // ==========================================================
-
-  Widget paymentOption({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required String value,
-  }) {
-    bool selected = paymentMethod == value;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        setState(() {
-          paymentMethod = value;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? const Color(0xFF1E4D3B) : Colors.black12,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 45,
-              height: 45,
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFFE8F1EC)
-                    : const Color(0xFFF5F5F0),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: const Color(0xFF1E4D3B)),
-            ),
-
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 11, color: Colors.black54),
-                  ),
-                ],
-              ),
-            ),
-
-            Radio<String>(
-              value: value,
-              groupValue: paymentMethod,
-              activeColor: const Color(0xFF1E4D3B),
-              onChanged: (value) {
-                setState(() {
-                  paymentMethod = value!;
-                });
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
 
-  // ==========================================================
-  // TEXT FIELD
-  // ==========================================================
-
-  Widget buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-    int maxLines = 1,
-    int? maxLength,
-    bool obscureText = false,
-  }) {
-    return TextFormField(
+  Widget deliveryForm() => Form(
+    key: form,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Enter the delivery contact and complete shipping address.'),
+        if (UserSession.shippingAddresses.isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: pickAddress,
+            icon: const Icon(Icons.location_on_outlined),
+            label: const Text('Use a saved address'),
+          ),
+        field(name, 'Full name', 120, minimum: 2),
+        field(phone, 'Phone number', 30, phoneField: true),
+        field(address, 'House / street address', 300),
+        field(area, 'Area', 120),
+        field(city, 'City', 120),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Save this address to my profile'),
+          value: saveAddress,
+          onChanged: (value) => setState(() => saveAddress = value == true),
+        ),
+      ],
+    ),
+  );
+  Widget field(
+    TextEditingController controller,
+    String label,
+    int limit, {
+    int minimum = 1,
+    bool phoneField = false,
+  }) => Padding(
+    padding: const EdgeInsets.only(top: 14),
+    child: TextFormField(
       controller: controller,
-      validator: validator,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      maxLength: maxLength,
-      obscureText: obscureText,
-      style: const TextStyle(fontSize: 14),
+      maxLength: limit,
+      keyboardType: phoneField ? TextInputType.phone : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 20),
-        filled: true,
-        fillColor: Colors.white,
+        border: const OutlineInputBorder(),
         counterText: '',
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.black12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.black12),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF1E4D3B), width: 1.5),
-        ),
       ),
-    );
-  }
-}
-
-// ============================================================
-// INFO CARD
-// ============================================================
-
-class CheckoutInfoCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const CheckoutInfoCard({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF2EE),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: const Color(0xFF1E4D3B)),
+      validator: (value) {
+        final text = value?.trim() ?? '';
+        if (text.length < minimum || text.length > limit)
+          return 'Enter a valid ${label.toLowerCase()}';
+        if (phoneField &&
+            (!RegExp(r'^\+?[0-9 ()-]{10,30}$').hasMatch(text) ||
+                text.replaceAll(RegExp(r'\D'), '').length < 10 ||
+                text.replaceAll(RegExp(r'\D'), '').length > 15))
+          return 'Enter a valid phone number';
+        return null;
+      },
+    ),
+  );
+  Widget review() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Cash on Delivery', style: Theme.of(context).textTheme.titleMedium),
+      const Text('Pay when your order arrives.'),
+      const SizedBox(height: 16),
+      Text('${delivery.name} • ${delivery.phone}'),
+      Text(delivery.formattedAddress),
+      const Divider(),
+      for (final item in widget.quote.items)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(item.book.title),
+          subtitle: Text(
+            '${item.quantity} × \$${(item.book.priceMinor / 100).toStringAsFixed(2)}',
           ),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-              ],
-            ),
+          trailing: Text(
+            '\$${(item.book.priceMinor * item.quantity / 100).toStringAsFixed(2)}',
           ),
-        ],
+        ),
+      if (widget.quote.promoCode.isNotEmpty)
+        const Text('SAVE10: 10% off applied'),
+    ],
+  );
+  Widget confirmation(Order order) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Icon(Icons.check_circle_outline, color: Colors.green, size: 48),
+      const SizedBox(height: 16),
+      Text('Order: ${order.id}'),
+      Text('Status: ${order.status}'),
+      if (order.deliveryContact != null)
+        Text(
+          '${order.deliveryContact!.name} • ${order.deliveryContact!.phone}',
+        ),
+      Text(order.shippingAddress),
+      const Text('Payment: Cash on Delivery'),
+      const SizedBox(height: 16),
+      const Text(
+        'Track delivery in Profile → Your orders. Order updates are also available in Notifications.',
       ),
-    );
-  }
+      if (addressSaveMessage != null) Text(addressSaveMessage!),
+    ],
+  );
 }

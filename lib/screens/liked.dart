@@ -6,8 +6,8 @@ class LikedScreen extends StatelessWidget {
   final List<Book> allBooks;
   final List<CartItem> cartItems;
   final Set<String> savedBookIds;
-  final Function(Book) onAddToCart;
-  final Function(String) onToggleSave;
+  final Future<void> Function(Book) onAddToCart;
+  final Future<void> Function(String) onToggleSave;
 
   const LikedScreen({
     super.key,
@@ -148,8 +148,13 @@ class LikedScreen extends StatelessWidget {
                             Icons.add_shopping_cart,
                             color: Color(0xFF1E4D3B),
                           ),
-                          onPressed: () {
-                            onAddToCart(book);
+                          onPressed: () async {
+                            try {
+                              await onAddToCart(book);
+                            } catch (_) {
+                              return;
+                            }
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Added "${book.title}" to cart!'),
@@ -163,7 +168,11 @@ class LikedScreen extends StatelessWidget {
                             Icons.delete_outline,
                             color: Colors.redAccent,
                           ),
-                          onPressed: () => onToggleSave(book.id),
+                          onPressed: () async {
+                            try {
+                              await onToggleSave(book.id);
+                            } catch (_) {}
+                          },
                         ),
                       ],
                     ),

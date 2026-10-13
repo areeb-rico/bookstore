@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../models/book.dart';
+import '../../services/store_repository.dart';
 
 class ManageOrdersScreen extends StatefulWidget {
   final List<Order> orders;
+  final StoreRepository repository;
 
-  const ManageOrdersScreen({super.key, required this.orders});
+  const ManageOrdersScreen({
+    super.key,
+    required this.orders,
+    required this.repository,
+  });
 
   @override
   State<ManageOrdersScreen> createState() => _ManageOrdersScreenState();
@@ -12,7 +18,7 @@ class ManageOrdersScreen extends StatefulWidget {
 
 class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
   int _filterIdx = 0;
-  final List<String> _filters = ['All', 'Processing', 'Shipped', 'Delivered'];
+  final List<String> _filters = ['All', ...Order.statuses];
 
   // filter is index-based, all is 0 so keep a special case
   List<Order> get _vis {
@@ -41,7 +47,12 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
 
   Future<void> _swapStatus(int idx) async {
     var o = widget.orders[idx];
-    var opts = ['Processing', 'Shipped', 'Delivered'];
+    final statusIndex = Order.statuses.indexOf(o.status);
+    if (statusIndex < 0 || statusIndex >= Order.statuses.length - 1) {
+      _toast('No further status change is available.');
+      return;
+    }
+    final opts = [Order.statuses[statusIndex + 1]];
     var picked = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -90,9 +101,70 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
         ),
       ),
     );
-    if (picked == null) return;
-    setState(() => widget.orders[idx].status = picked);
-    _toast('${o.id} → $picked');
+    if (picked == null || !mounted) return;
+    try {
+      await widget.repository.setOrderStatus(o.id, picked);
+    } catch (_) {
+      if (mounted) _toast('Status could not be saved. Try again.');
+      return;
+    }
+    if (mounted) _toast('${o.id} → $picked');
+  }
+
+  void _details(String id) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheet) => SizedBox(
+        height: MediaQuery.sizeOf(sheet).height * .8,
+        child: StreamBuilder<List<Order>>(
+          stream: widget.repository.watchOrders('', admin: true),
+          builder: (context, snapshot) {
+            if (snapshot.hasError)
+              return const Center(child: Text('Order could not be loaded.'));
+            final order = (snapshot.data ?? widget.orders)
+                .where((o) => o.id == id)
+                .firstOrNull;
+            if (order == null)
+              return const Center(child: Text('Order no longer exists.'));
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(order.id, style: Theme.of(context).textTheme.titleLarge),
+                Text('Customer: ${order.userId}'),
+                Text(order.shippingAddress),
+                if (order.deliveryContact != null)
+                  Text(
+                    'Delivery contact: ${order.deliveryContact!.name} • ${order.deliveryContact!.phone}',
+                  ),
+                Text('Status: ${order.status}'),
+                Text(
+                  'Placed: ${order.date.toLocal().toString().split(".").first}',
+                ),
+                const Divider(),
+                for (final item in order.items)
+                  ListTile(
+                    title: Text(item.book.title),
+                    subtitle: Text(
+                      '${item.quantity} × \$${item.book.price.toStringAsFixed(2)}',
+                    ),
+                    trailing: Text(
+                      '\$${(item.book.price * item.quantity).toStringAsFixed(2)}',
+                    ),
+                  ),
+                const Divider(),
+                Text('Total: \$${order.total.toStringAsFixed(2)}'),
+                if (order.promoCode.isNotEmpty)
+                  Text('Promotion: ${order.promoCode}'),
+                Text(
+                  'Payment: ${order.paymentMethod == "Cash" ? "Cash on Delivery" : order.paymentMethod}',
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 
   void _toast(String m) {
@@ -192,6 +264,14 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () => _details(o.id),
+                                icon: const Icon(Icons.receipt_long),
+                                label: const Text('Order details'),
+                              ),
+                            ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -208,7 +288,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: c.withOpacity(0.15),
+                                    color: c.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(

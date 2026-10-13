@@ -1,13 +1,13 @@
 // Basic smoke test for the Book Store app.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bookstore/main.dart';
 
 void main() {
   testWidgets('App launches on the login screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const BookStoreApp());
+    // Exercise the login UI without initializing a real Firebase account.
+    await tester.pumpWidget(const BookStoreApp(initialRoute: '/login'));
     await tester.pumpAndSettle();
 
     // The login screen should be the first thing the user sees.

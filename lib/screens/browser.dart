@@ -6,8 +6,8 @@ class BrowserScreen extends StatefulWidget {
   final List<Book> allBooks;
   final List<CartItem> cartItems;
   final Set<String> savedBookIds;
-  final Function(Book) onAddToCart;
-  final Function(String) onToggleSave;
+  final Future<void> Function(Book) onAddToCart;
+  final Future<void> Function(String) onToggleSave;
 
   const BrowserScreen({
     super.key,
@@ -44,7 +44,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         books.sort((a, b) => b.price.compareTo(a.price));
         break;
       case 'Newest':
-        books.sort((a, b) => int.parse(b.id).compareTo(int.parse(a.id)));
+        books.sort((a, b) => b.releaseDate.compareTo(a.releaseDate));
         break;
       case 'Popularity':
       default:
@@ -150,8 +150,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: ['All', 'Fiction', 'Sci-Fi', 'Mystery', 'History']
-                    .map((category) {
+                children:
+                    [
+                      'All',
+                      ...{for (final b in widget.allBooks) b.category},
+                    ].map((category) {
                       final isSelected = selectedCategory == category;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
@@ -170,8 +173,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                               setState(() => selectedCategory = category),
                         ),
                       );
-                    })
-                    .toList(),
+                    }).toList(),
               ),
             ),
             const SizedBox(height: 12),
@@ -262,8 +264,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
                                   book.imageUrl,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
-                                  errorBuilder:
-                                      (context, error, stackTrace) => Container(
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
                                         width: double.infinity,
                                         height: double.infinity,
                                         color: const Color(0xFFF5F5F0),
@@ -280,7 +282,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
                                 top: 6,
                                 right: 6,
                                 child: GestureDetector(
-                                  onTap: () => widget.onToggleSave(book.id),
+                                  onTap: () async {
+                                    try {
+                                      await widget.onToggleSave(book.id);
+                                    } catch (_) {}
+                                  },
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: const BoxDecoration(

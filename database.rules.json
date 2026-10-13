@@ -1,0 +1,338 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))",
+      "$uid": {
+        ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.uid === $uid",
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.uid === $uid && newData.exists() && newData.child('uid').val() === $uid && ((!data.exists() && newData.child('role').val() === 'Customer') || (data.exists() && newData.child('role').val() === data.child('role').val()))",
+        ".validate": "newData.hasChildren(['uid', 'name', 'email', 'phone', 'role', 'createdAt'])",
+        "uid": {
+          ".validate": "newData.val() === $uid"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 120"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val() === auth.token.email"
+        },
+        "phone": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "role": {
+          ".validate": "(!data.exists() && newData.val() === 'Customer') || (data.exists() && newData.val() === data.val())"
+        },
+        "createdAt": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "books": {
+      ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true",
+      "$bookId": {
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true)) && $bookId !== '_version' && $bookId !== '_epoch'",
+        ".validate": "newData.hasChildren(['title', 'author', 'price', 'rating', 'category', 'imageUrl', 'description', 'releaseDate'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 300"
+        },
+        "author": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "price": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
+        },
+        "rating": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5"
+        },
+        "category": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+        },
+        "imageUrl": {
+          ".validate": "newData.isString() && newData.val().length <= 2000"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 20000"
+        },
+        "releaseDate": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "customerData": {
+      "$uid": {
+        ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+        "cart": {
+          ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid && newData.exists()",
+          "$bookId": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99 && newData.val() % 1 === 0 && (root.child('books').child($bookId).exists() || (data.exists() && newData.val() === data.val()))"
+          },
+          ".validate": "newData.hasChild('_version') && newData.child('_version').val() === (data.child('_version').exists() ? data.child('_version').val() : 0) + 1 && newData.hasChild('_epoch') && (!data.child('_epoch').exists() || newData.child('_epoch').val() === data.child('_epoch').val())",
+          "_version": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() > 0 && newData.val() < 9007199254740991"
+          },
+          "_epoch": {
+            ".validate": "newData.isString() && (newData.val() === 'legacy' || newData.val().matches(/^[A-Za-z0-9_-]{20}$/))"
+          }
+        },
+        "wishlist": {
+          ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+          "$bookId": {
+            ".validate": "newData.val() === true && root.child('books').child($bookId).exists()"
+          }
+        },
+        "addresses": {
+          "$id": {
+            ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['name','phone','address','area','city'])",
+            "name": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+            },
+            "phone": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30"
+            },
+            "address": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 300"
+            },
+            "area": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+            },
+            "city": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "paymentMethods": {
+          "$id": {
+            ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['brand','last4','expiry'])",
+            "brand": {
+              ".validate": "newData.val() === 'Visa' || newData.val() === 'Mastercard' || newData.val() === 'American Express'"
+            },
+            "last4": {
+              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}$/)"
+            },
+            "expiry": {
+              ".validate": "newData.isString() && newData.val().matches(/^(0[1-9]|1[0-2])\\/[0-9]{2}$/)"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "preferences": {
+          ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+          "darkMode": {
+            ".validate": "newData.isBoolean()"
+          },
+          "pushNotifications": {
+            ".validate": "newData.isBoolean()"
+          },
+          "emailOffers": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true)) && auth.uid !== $uid && $uid !== '6W2W5WzGMiWG6580Q5ET4iS4y903' && root.child('users').child($uid).exists() && !newData.exists()",
+        "orderReadStatus": {
+          "$orderId": {
+            ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid",
+            ".validate": "newData.isString() && root.child('orders').child($orderId).child('userId').val() === auth.uid && newData.val() === root.child('orders').child($orderId).child('status').val()"
+          }
+        }
+      }
+    },
+    "orders": {
+      ".indexOn": [
+        "userId"
+      ],
+      ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (((root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))) || (query.orderByChild === 'userId' && query.equalTo === auth.uid))",
+      "$orderId": {
+        ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (((root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))) || data.child('userId').val() === auth.uid || $orderId.beginsWith(auth.uid + '-'))",
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && !data.exists() && newData.child('userId').val() === auth.uid && newData.child('status').val() === 'Ordered' && newData.child('paymentMethod').val() === 'Cash' && $orderId === auth.uid + '-' + newData.child('cartEpoch').val() + '-' + newData.child('cartRevision').val() && newData.child('cartRevision').val() === (root.child('customerData').child(auth.uid).child('cart').child('_version').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_version').val() : 0) && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_version').val() === newData.child('cartRevision').val() + 1 && newData.child('cartEpoch').val() === (root.child('customerData').child(auth.uid).child('cart').child('_epoch').exists() ? root.child('customerData').child(auth.uid).child('cart').child('_epoch').val() : 'legacy') && newData.parent().parent().child('customerData').child(auth.uid).child('cart').child('_epoch').val() === newData.child('cartEpoch').val()",
+        ".validate": "data.exists() || (newData.hasChildren(['userId','items','total','shippingAddress','deliveryContact','status','date','paymentMethod','schemaVersion','subtotalMinor','totalMinor','promoCode','cartRevision','cartEpoch']) && newData.child('schemaVersion').val() === 2 && newData.child('shippingAddress').val() === newData.child('deliveryContact/address').val() + ', ' + newData.child('deliveryContact/area').val() + ', ' + newData.child('deliveryContact/city').val())",
+        "userId": {
+          ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())"
+        },
+        "total": {
+          ".validate": "data.exists() || (newData.isNumber() && newData.val() >= 0 && newData.val() * 100 >= newData.parent().child('totalMinor').val() - 0.00001 && newData.val() * 100 <= newData.parent().child('totalMinor').val() + 0.00001)"
+        },
+        "shippingAddress": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000"
+        },
+        "date": {
+          ".validate": "newData.isString()"
+        },
+        "paymentMethod": {
+          ".validate": "newData.val() === 'Cash'"
+        },
+        "status": {
+          ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true)) && data.exists()",
+          ".validate": "newData.val() === data.val() || (data.val() === 'Ordered' && newData.val() === 'Processing') || (data.val() === 'Processing' && newData.val() === 'Shipped') || (data.val() === 'Shipped' && newData.val() === 'Out for delivery') || (data.val() === 'Out for delivery' && newData.val() === 'Delivered') || (!data.exists() && newData.val() === 'Ordered')"
+        },
+        "items": {
+          ".validate": "data.exists() || newData.hasChild('0')",
+          "$itemId": {
+            ".validate": "data.exists() || ($itemId.matches(/^(0|[1-9]|1[0-9])$/) && newData.hasChildren(['bookId','book','quantity','unitPriceMinor','lineTotalMinor']) && ($itemId === '0' || newData.child('bookId').val() !== newData.parent().child('0/bookId').val()) && ($itemId === '1' || newData.child('bookId').val() !== newData.parent().child('1/bookId').val()) && ($itemId === '2' || newData.child('bookId').val() !== newData.parent().child('2/bookId').val()) && ($itemId === '3' || newData.child('bookId').val() !== newData.parent().child('3/bookId').val()) && ($itemId === '4' || newData.child('bookId').val() !== newData.parent().child('4/bookId').val()) && ($itemId === '5' || newData.child('bookId').val() !== newData.parent().child('5/bookId').val()) && ($itemId === '6' || newData.child('bookId').val() !== newData.parent().child('6/bookId').val()) && ($itemId === '7' || newData.child('bookId').val() !== newData.parent().child('7/bookId').val()) && ($itemId === '8' || newData.child('bookId').val() !== newData.parent().child('8/bookId').val()) && ($itemId === '9' || newData.child('bookId').val() !== newData.parent().child('9/bookId').val()) && ($itemId === '10' || newData.child('bookId').val() !== newData.parent().child('10/bookId').val()) && ($itemId === '11' || newData.child('bookId').val() !== newData.parent().child('11/bookId').val()) && ($itemId === '12' || newData.child('bookId').val() !== newData.parent().child('12/bookId').val()) && ($itemId === '13' || newData.child('bookId').val() !== newData.parent().child('13/bookId').val()) && ($itemId === '14' || newData.child('bookId').val() !== newData.parent().child('14/bookId').val()) && ($itemId === '15' || newData.child('bookId').val() !== newData.parent().child('15/bookId').val()) && ($itemId === '16' || newData.child('bookId').val() !== newData.parent().child('16/bookId').val()) && ($itemId === '17' || newData.child('bookId').val() !== newData.parent().child('17/bookId').val()) && ($itemId === '18' || newData.child('bookId').val() !== newData.parent().child('18/bookId').val()) && ($itemId === '19' || newData.child('bookId').val() !== newData.parent().child('19/bookId').val()))",
+            "bookId": {
+              ".validate": "data.exists() || (newData.isString() && root.child('books').child(newData.val()).exists() && !newData.parent().parent().parent().parent().parent().child('customerData').child(auth.uid).child('cart').child(newData.val()).exists())"
+            },
+            "quantity": {
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99 && newData.val() % 1 === 0 && (data.exists() || newData.val() === root.child('customerData').child(auth.uid).child('cart').child(newData.parent().child('bookId').val()).val())"
+            },
+            "book": {
+              ".validate": "data.exists() || newData.hasChildren(['title','author','price','rating','category','imageUrl','description','releaseDate'])",
+              "$other": {
+                ".validate": false
+              },
+              "title": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('title').val()"
+              },
+              "author": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('author').val()"
+              },
+              "price": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('price').val()"
+              },
+              "rating": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('rating').val()"
+              },
+              "category": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('category').val()"
+              },
+              "imageUrl": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('imageUrl').val()"
+              },
+              "description": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('description').val()"
+              },
+              "releaseDate": {
+                ".validate": "data.exists() || newData.val() === root.child('books').child(newData.parent().parent().child('bookId').val()).child('releaseDate').val()"
+              }
+            },
+            "$other": {
+              ".validate": false
+            },
+            "unitPriceMinor": {
+              ".validate": "data.exists() || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000 && newData.val() % 1 === 0 && newData.val() <= root.child('books').child(newData.parent().child('bookId').val()).child('price').val() * 100 + 0.5 && newData.val() > root.child('books').child(newData.parent().child('bookId').val()).child('price').val() * 100 - 0.5)"
+            },
+            "lineTotalMinor": {
+              ".validate": "newData.isNumber() && newData.val() === newData.parent().child('unitPriceMinor').val() * newData.parent().child('quantity').val()"
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        },
+        "schemaVersion": {
+          ".validate": "newData.val() === 2"
+        },
+        "cartRevision": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0 && newData.val() < 9007199254740991"
+        },
+        "promoCode": {
+          ".validate": "newData.val() === '' || newData.val() === 'SAVE10'"
+        },
+        "subtotalMinor": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0 && newData.val() === (newData.parent().child('items/0/lineTotalMinor').exists() ? newData.parent().child('items/0/lineTotalMinor').val() : 0) + (newData.parent().child('items/1/lineTotalMinor').exists() ? newData.parent().child('items/1/lineTotalMinor').val() : 0) + (newData.parent().child('items/2/lineTotalMinor').exists() ? newData.parent().child('items/2/lineTotalMinor').val() : 0) + (newData.parent().child('items/3/lineTotalMinor').exists() ? newData.parent().child('items/3/lineTotalMinor').val() : 0) + (newData.parent().child('items/4/lineTotalMinor').exists() ? newData.parent().child('items/4/lineTotalMinor').val() : 0) + (newData.parent().child('items/5/lineTotalMinor').exists() ? newData.parent().child('items/5/lineTotalMinor').val() : 0) + (newData.parent().child('items/6/lineTotalMinor').exists() ? newData.parent().child('items/6/lineTotalMinor').val() : 0) + (newData.parent().child('items/7/lineTotalMinor').exists() ? newData.parent().child('items/7/lineTotalMinor').val() : 0) + (newData.parent().child('items/8/lineTotalMinor').exists() ? newData.parent().child('items/8/lineTotalMinor').val() : 0) + (newData.parent().child('items/9/lineTotalMinor').exists() ? newData.parent().child('items/9/lineTotalMinor').val() : 0) + (newData.parent().child('items/10/lineTotalMinor').exists() ? newData.parent().child('items/10/lineTotalMinor').val() : 0) + (newData.parent().child('items/11/lineTotalMinor').exists() ? newData.parent().child('items/11/lineTotalMinor').val() : 0) + (newData.parent().child('items/12/lineTotalMinor').exists() ? newData.parent().child('items/12/lineTotalMinor').val() : 0) + (newData.parent().child('items/13/lineTotalMinor').exists() ? newData.parent().child('items/13/lineTotalMinor').val() : 0) + (newData.parent().child('items/14/lineTotalMinor').exists() ? newData.parent().child('items/14/lineTotalMinor').val() : 0) + (newData.parent().child('items/15/lineTotalMinor').exists() ? newData.parent().child('items/15/lineTotalMinor').val() : 0) + (newData.parent().child('items/16/lineTotalMinor').exists() ? newData.parent().child('items/16/lineTotalMinor').val() : 0) + (newData.parent().child('items/17/lineTotalMinor').exists() ? newData.parent().child('items/17/lineTotalMinor').val() : 0) + (newData.parent().child('items/18/lineTotalMinor').exists() ? newData.parent().child('items/18/lineTotalMinor').val() : 0) + (newData.parent().child('items/19/lineTotalMinor').exists() ? newData.parent().child('items/19/lineTotalMinor').val() : 0)"
+        },
+        "totalMinor": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 19800000000 && newData.val() % 1 === 0 && ((newData.parent().child('promoCode').val() === '' && newData.val() === newData.parent().child('subtotalMinor').val()) || (newData.parent().child('promoCode').val() === 'SAVE10' && newData.val() <= ((newData.parent().child('subtotalMinor').val() * 90 + 50) / 100) && newData.val() > ((newData.parent().child('subtotalMinor').val() * 90 + 50) / 100) - 1))"
+        },
+        "deliveryContact": {
+          ".validate": "newData.hasChildren(['name','phone','address','area','city'])",
+          "$other": {
+            ".validate": false
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 120"
+          },
+          "address": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 300"
+          },
+          "area": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 120"
+          },
+          "city": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 120"
+          },
+          "phone": {
+            ".validate": "newData.isString() && newData.val().matches(/^\\+?[0-9]{10,15}$/)"
+          }
+        },
+        "cartEpoch": {
+          ".validate": "newData.isString() && (newData.val() === 'legacy' || newData.val().matches(/^[A-Za-z0-9_-]{20}$/))"
+        }
+      }
+    },
+    "bookReviews": {
+      "$bookId": {
+        ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true",
+        "$uid": {
+          ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid && root.child('books').child($bookId).exists()",
+          ".validate": "newData.hasChildren(['userId','user','rating','comment','updatedAt'])",
+          "userId": {
+            ".validate": "newData.val() === $uid"
+          },
+          "user": {
+            ".validate": "newData.isString() && newData.val() === root.child('users').child($uid).child('name').val()"
+          },
+          "rating": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5 && newData.val() % 1 === 0"
+          },
+          "comment": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 2000"
+          },
+          "updatedAt": {
+            ".validate": "newData.isString()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "reviewLikes": {
+      "$bookId": {
+        ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true",
+        "$reviewId": {
+          "$uid": {
+            ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && auth.uid === $uid && root.child('bookReviews').child($bookId).child($reviewId).exists()",
+            ".validate": "newData.val() === true"
+          }
+        }
+      }
+    },
+    "accountAccess": {
+      ".read": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true))",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('accountAccess').child(auth.uid).child('disabled').val() !== true && root.child('accountAccess').child(auth.uid).child('removed').val() !== true && auth.token.email_verified === true && (root.child('accountAccess').child(auth.uid).child('admin').val() === true || (auth.uid === '6W2W5WzGMiWG6580Q5ET4iS4y903' && auth.token.admin === true)) && auth.uid !== $uid && $uid !== '6W2W5WzGMiWG6580Q5ET4iS4y903' && root.child('users').child($uid).exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['admin','disabled','removed']) && (newData.child('removed').val() !== true || (newData.child('disabled').val() === true && newData.child('admin').val() === false)) && (newData.child('admin').val() !== true || data.child('admin').val() === true || (newData.child('disabled').val() === false && newData.child('removed').val() === false))",
+        "admin": {
+          ".validate": "newData.isBoolean()"
+        },
+        "disabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "removed": {
+          ".validate": "newData.isBoolean()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}

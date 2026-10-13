@@ -7,8 +7,8 @@ class HomeScreen extends StatefulWidget {
   final List<Book> allBooks;
   final List<CartItem> cartItems;
   final Set<String> savedBookIds;
-  final Function(Book) onAddToCart;
-  final Function(String) onToggleSave;
+  final Future<void> Function(Book) onAddToCart;
+  final Future<void> Function(String) onToggleSave;
 
   const HomeScreen({
     super.key,
@@ -47,9 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..sort((a, b) => b.rating.compareTo(a.rating));
 
     final List<Book> newArrivals = List<Book>.from(widget.allBooks)
-      ..sort(
-        (a, b) => (int.tryParse(b.id) ?? 0).compareTo(int.tryParse(a.id) ?? 0),
-      );
+      ..sort((a, b) => b.releaseDate.compareTo(a.releaseDate));
 
     final int cartCount = widget.cartItems.fold(
       0,
@@ -90,6 +88,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
 
         actions: [
+          IconButton(
+            tooltip: 'Order notifications',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => Navigator.pushNamed(context, '/notifications'),
+          ),
           Stack(
             alignment: Alignment.center,
             children: [
@@ -201,8 +204,11 @@ class _HomeScreenState extends State<HomeScreen> {
               scrollDirection: Axis.horizontal,
 
               child: Row(
-                children: ['All', 'Fiction', 'Sci-Fi', 'Mystery', 'History']
-                    .map((category) {
+                children:
+                    [
+                      'All',
+                      ...{for (final b in widget.allBooks) b.category},
+                    ].map((category) {
                       final isSelected = selectedCategory == category;
 
                       return Padding(
@@ -233,8 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       );
-                    })
-                    .toList(),
+                    }).toList(),
               ),
             ),
 
@@ -419,8 +424,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: isSaved ? Colors.red : Colors.grey,
                           ),
 
-                          onPressed: () {
-                            widget.onToggleSave(book.id);
+                          onPressed: () async {
+                            try {
+                              await widget.onToggleSave(book.id);
+                            } catch (_) {}
                           },
                         ),
 
@@ -430,8 +437,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: Color(0xFF1E4D3B),
                           ),
 
-                          onPressed: () {
-                            widget.onAddToCart(book);
+                          onPressed: () async {
+                            try {
+                              await widget.onAddToCart(book);
+                            } catch (_) {
+                              return;
+                            }
+                            if (!context.mounted) return;
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -520,8 +532,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 6,
 
                   child: GestureDetector(
-                    onTap: () {
-                      widget.onToggleSave(book.id);
+                    onTap: () async {
+                      try {
+                        await widget.onToggleSave(book.id);
+                      } catch (_) {}
                     },
 
                     child: Container(

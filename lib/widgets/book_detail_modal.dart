@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../services/review_service.dart';
 import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../screens/user_session.dart';
@@ -7,8 +9,8 @@ const _green = Color(0xFF1E4D3B);
 void showBookDetailModal(
   BuildContext context,
   Book book,
-  Function(Book) onAddToCart,
-  Function(String) onToggleSave,
+  Future<void> Function(Book) onAddToCart,
+  Future<void> Function(String) onToggleSave,
   bool isSaved,
 ) {
   showModalBottomSheet(
@@ -31,8 +33,8 @@ void showBookDetailModal(
 
 class _BookDetailSheet extends StatefulWidget {
   final Book book;
-  final Function(Book) onAddToCart;
-  final Function(String) onToggleSave;
+  final Future<void> Function(Book) onAddToCart;
+  final Future<void> Function(String) onToggleSave;
   final bool isSaved;
 
   const _BookDetailSheet({
@@ -48,13 +50,35 @@ class _BookDetailSheet extends StatefulWidget {
 
 class _BookDetailSheetState extends State<_BookDetailSheet> {
   late bool isSaved;
-  late List<Review> reviews;
+  List<Review> reviews = [];
+  StreamSubscription<List<Review>>? subscription;
+  bool loadingReviews = true;
+  String? reviewError;
+  bool liking = false;
 
   @override
   void initState() {
     super.initState();
     isSaved = widget.isSaved;
-    reviews = ReviewStore.forBook(widget.book.id);
+    subscription = ReviewService.instance
+        .watch(widget.book.id, UserSession.uid)
+        .listen(
+          (value) {
+            if (!mounted) return;
+            setState(() {
+              reviews = value;
+              loadingReviews = false;
+              reviewError = null;
+            });
+          },
+          onError: (Object _) {
+            if (mounted)
+              setState(() {
+                loadingReviews = false;
+                reviewError = 'Reviews could not be loaded.';
+              });
+          },
+        );
   }
 
   double get averageRating {
@@ -63,21 +87,36 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
     return sum / reviews.length;
   }
 
-  void _toggleLike(Review review) {
-    setState(() {
-      if (review.likedByMe) {
-        review.likes--;
-        review.likedByMe = false;
-      } else {
-        review.likes++;
-        review.likedByMe = true;
-      }
-    });
+  @override
+  void dispose() {
+    subscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleLike(Review review) async {
+    if (liking) return;
+    liking = true;
+    try {
+      await ReviewService.instance.setLiked(
+        widget.book.id,
+        review.id,
+        !review.likedByMe,
+      );
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Like could not be saved. Try again.')),
+        );
+    } finally {
+      liking = false;
+    }
   }
 
   void _showWriteReviewSheet() {
-    double myRating = 5;
-    final commentController = TextEditingController();
+    final own = reviews.where((r) => r.userId == UserSession.uid).firstOrNull;
+    double myRating = own?.rating ?? 5;
+    final commentController = TextEditingController(text: own?.comment ?? '');
+    bool saving = false;
 
     showModalBottomSheet(
       context: context,
@@ -123,6 +162,7 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: commentController,
+                    maxLength: 2000,
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Share what you thought about this book...',
@@ -138,39 +178,49 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
-                        final text = commentController.text.trim();
-                        if (text.isEmpty) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please write a few words first.'),
-                            ),
-                          );
-                          return;
-                        }
+                      onPressed: saving
+                          ? null
+                          : () async {
+                              final text = commentController.text.trim();
+                              if (text.isEmpty) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Please write a few words first.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
 
-                        ReviewStore.add(
-                          widget.book.id,
-                          Review(
-                            user: UserSession.name.isNotEmpty
-                                ? UserSession.name
-                                : 'You',
-                            rating: myRating,
-                            comment: text,
-                          ),
-                        );
-
-                        Navigator.pop(ctx);
-                        setState(() {
-                          reviews = ReviewStore.forBook(widget.book.id);
-                        });
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Thanks for your review!'),
-                          ),
-                        );
-                      },
+                              setSheetState(() => saving = true);
+                              try {
+                                await ReviewService.instance.save(
+                                  widget.book.id,
+                                  myRating,
+                                  text,
+                                );
+                              } catch (_) {
+                                if (ctx.mounted) {
+                                  setSheetState(() => saving = false);
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Review could not be saved. Try again.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+                              if (!ctx.mounted || !mounted) return;
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Thanks for your review!'),
+                                ),
+                              );
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _green,
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -305,9 +355,13 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
             Row(
               children: [
                 OutlinedButton.icon(
-                  onPressed: () {
-                    widget.onToggleSave(book.id);
-                    setState(() => isSaved = !isSaved);
+                  onPressed: () async {
+                    try {
+                      await widget.onToggleSave(book.id);
+                    } catch (_) {
+                      return;
+                    }
+                    if (mounted) setState(() => isSaved = !isSaved);
                   },
                   icon: Icon(
                     isSaved ? Icons.favorite : Icons.favorite_border,
@@ -318,8 +372,13 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      widget.onAddToCart(book);
+                    onPressed: () async {
+                      try {
+                        await widget.onAddToCart(book);
+                      } catch (_) {
+                        return;
+                      }
+                      if (!context.mounted) return;
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -368,7 +427,9 @@ class _BookDetailSheetState extends State<_BookDetailSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            if (reviews.isEmpty)
+            if (loadingReviews) const LinearProgressIndicator(),
+            if (reviewError != null) Text(reviewError!),
+            if (!loadingReviews && reviews.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text(

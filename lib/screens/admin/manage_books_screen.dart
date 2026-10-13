@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../models/book.dart';
+import '../../services/store_repository.dart';
+import '../../widgets/book_editor_sheet.dart';
 
 class ManageBooksScreen extends StatefulWidget {
   final List<Book> allBooks;
+  final StoreRepository repository;
 
-  const ManageBooksScreen({super.key, required this.allBooks});
+  const ManageBooksScreen({
+    super.key,
+    required this.allBooks,
+    required this.repository,
+  });
 
   @override
   State<ManageBooksScreen> createState() => _ManageBooksScreenState();
@@ -24,8 +31,9 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
       var t = b.title.toLowerCase();
       var a = b.author.toLowerCase();
       var g = b.category.toLowerCase();
-      if (t.contains(needle) || a.contains(needle) || g.contains(needle))
+      if (t.contains(needle) || a.contains(needle) || g.contains(needle)) {
         out.add(b);
+      }
       i++;
     }
     return out;
@@ -37,98 +45,15 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
     super.dispose();
   }
 
-  void _openForm({Book? existing, int? idx}) {
-    var t = TextEditingController(text: existing?.title ?? '');
-    var a = TextEditingController(text: existing?.author ?? '');
-    var p = TextEditingController(
-      text: existing == null ? '' : existing.price.toStringAsFixed(2),
-    );
-    var g = TextEditingController(text: existing?.category ?? '');
-
-    showModalBottomSheet(
+  Future<void> _openForm({Book? existing, int? idx}) async {
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              existing == null ? 'Add book' : 'Edit book',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 16),
-            _tf(t, 'Title'),
-            const SizedBox(height: 10),
-            _tf(a, 'Author'),
-            const SizedBox(height: 10),
-            _tf(p, 'Price (e.g. 12.99)', keyboard: TextInputType.number),
-            const SizedBox(height: 10),
-            _tf(g, 'Genre'),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F3A2E),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onPressed: () {
-                  if (t.text.trim().isEmpty) {
-                    _snack('Title required');
-                    return;
-                  }
-                  setState(() {
-                    var data = Book(
-                      id:
-                          existing?.id ??
-                          DateTime.now().millisecondsSinceEpoch.toString(),
-                      title: t.text.trim(),
-                      author: a.text.trim().isEmpty ? 'Unknown' : a.text.trim(),
-                      price: double.tryParse(p.text.trim()) ?? 0.0,
-                      rating: existing?.rating ?? 0.0,
-                      category: g.text.trim().isEmpty
-                          ? 'General'
-                          : g.text.trim(),
-                      imageUrl:
-                          existing?.imageUrl ??
-                          'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300&auto=format&fit=crop',
-                      description: existing?.description ?? '',
-                    );
-                    if (existing == null) {
-                      widget.allBooks.add(data);
-                    } else {
-                      widget.allBooks[idx!] = data;
-                    }
-                  });
-                  Navigator.pop(context);
-                  _snack(existing == null ? 'Book added' : 'Book updated');
-                },
-                child: Text(
-                  existing == null ? 'Add' : 'Save',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) =>
+          BookEditorSheet(repository: widget.repository, existing: existing),
     );
+    if (saved == true && mounted)
+      _snack(existing == null ? 'Book added' : 'Book updated');
   }
 
   Color _colorFor(Book b) {
@@ -149,9 +74,10 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
 
   void _confirmDelete(int idx) {
     var book = widget.allBooks[idx];
+    var deleting = false;
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete book?'),
         content: Text('Remove "${book.title}" from catalog?'),
         actions: [
@@ -160,9 +86,19 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              setState(() => widget.allBooks.removeAt(idx));
-              Navigator.pop(context);
+            onPressed: () async {
+              if (deleting) return;
+              deleting = true;
+              try {
+                await widget.repository.deleteBook(book.id);
+              } catch (_) {
+                if (mounted) _snack('Book could not be deleted. Try again.');
+                return;
+              } finally {
+                deleting = false;
+              }
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
               _snack('Book deleted');
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -177,29 +113,6 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
       SnackBar(content: Text(m), duration: const Duration(seconds: 1)),
     );
   }
-
-  Widget _tf(TextEditingController c, String hint, {TextInputType? keyboard}) =>
-      TextField(
-        controller: c,
-        keyboardType: keyboard,
-        decoration: InputDecoration(
-          hintText: hint,
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-        ),
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +218,12 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  b.title.substring(0, 2).toUpperCase(),
+                                  b.title
+                                      .substring(
+                                        0,
+                                        b.title.length < 2 ? b.title.length : 2,
+                                      )
+                                      .toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
@@ -328,7 +246,7 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    '${b.author} · \$${b.price.toStringAsFixed(2)} · ${b.category}',
+                                    '${b.author} Â· \$${b.price.toStringAsFixed(2)} Â· ${b.category}',
                                     style: TextStyle(
                                       color: Colors.grey.shade600,
                                       fontSize: 11,
