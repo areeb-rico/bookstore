@@ -54,8 +54,8 @@ app.*.map.json
 /plans/
 /fixtures/
 
-# Owner-operated Firebase setup helper; not needed to build or run the app
-/tools/firebase_setup.cjs
+# Local setup and verification scripts (keep on disk)
+/tools/
 
 # Local Firebase emulator configuration
 /firebase.emulators.json
