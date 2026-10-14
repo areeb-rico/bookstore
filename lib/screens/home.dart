@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/book.dart';
+import '../theme/app_theme.dart';
 import '../widgets/book_detail_modal.dart';
 import 'user_session.dart';
 
@@ -60,26 +61,26 @@ class _HomeScreenState extends State<HomeScreen> {
         : 'Reader';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F0),
+      backgroundColor: context.pageBg,
 
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F5F0),
+        backgroundColor: context.pageBg,
         elevation: 0,
         automaticallyImplyLeading: false,
 
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Good evening',
-              style: TextStyle(color: Colors.black54, fontSize: 13),
+              style: TextStyle(color: context.textMuted, fontSize: 13),
             ),
 
             // Dynamic logged-in user's name
             Text(
               loggedInUserName,
-              style: const TextStyle(
-                color: Colors.black,
+              style: TextStyle(
+                color: context.textStrong,
                 fontWeight: FontWeight.bold,
                 fontSize: 22,
               ),
@@ -97,11 +98,11 @@ class _HomeScreenState extends State<HomeScreen> {
             alignment: Alignment.center,
             children: [
               CircleAvatar(
-                backgroundColor: Colors.white,
+                backgroundColor: context.surface,
                 child: IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.shopping_bag_outlined,
-                    color: Colors.black,
+                    color: context.textStrong,
                   ),
                   onPressed: () {
                     Navigator.pushNamed(context, '/cart');
@@ -115,14 +116,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 4,
                   child: Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E4D3B),
+                    decoration: BoxDecoration(
+                      color: context.brand,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       '$cartCount',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: context.onBrand,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
@@ -135,9 +136,9 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 8),
 
           CircleAvatar(
-            backgroundColor: Colors.white,
+            backgroundColor: context.surface,
             child: IconButton(
-              icon: const Icon(Icons.person_outline, color: Colors.black),
+              icon: Icon(Icons.person_outline, color: context.textStrong),
               onPressed: () {
                 // Open profile
                 // If your main_shell handles Profile tab,
@@ -170,11 +171,11 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: InputDecoration(
                 hintText: 'Search titles, authors, genres',
 
-                prefixIcon: const Icon(Icons.search, color: Colors.black45),
+                prefixIcon: Icon(Icons.search, color: context.textMuted),
 
                 suffixIcon: searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.black45),
+                        icon: Icon(Icons.clear, color: context.textMuted),
                         onPressed: () {
                           setState(() {
                             searchQuery = '';
@@ -184,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : null,
 
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: context.surface,
 
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
 
@@ -219,12 +220,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
                           label: Text(category),
 
-                          backgroundColor: Colors.white,
+                          backgroundColor: context.surface,
 
-                          selectedColor: const Color(0xFF1E4D3B),
+                          selectedColor: context.brand,
 
                           labelStyle: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black87,
+                            color: isSelected
+                                ? context.onBrand
+                                : context.textStrong,
                             fontWeight: FontWeight.w500,
                           ),
 
@@ -363,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(8),
 
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.surface,
 
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -390,11 +393,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         errorBuilder: (context, error, stackTrace) => Container(
                           width: 45,
                           height: 65,
-                          color: const Color(0xFFF5F5F0),
+                          color: context.pageBg,
                           alignment: Alignment.center,
-                          child: const Icon(
+                          child: Icon(
                             Icons.menu_book,
-                            color: Colors.black45,
+                            color: context.textMuted,
                             size: 20,
                           ),
                         ),
@@ -421,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icon(
                             isSaved ? Icons.favorite : Icons.favorite_border,
 
-                            color: isSaved ? Colors.red : Colors.grey,
+                            color: isSaved ? Colors.red : context.textMuted,
                           ),
 
                           onPressed: () async {
@@ -432,9 +435,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
 
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.add_shopping_cart,
-                            color: Color(0xFF1E4D3B),
+                            color: context.brand,
                           ),
 
                           onPressed: () async {
@@ -471,10 +474,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
-        color: Colors.black,
+        color: context.textStrong,
       ),
     );
   }
@@ -516,11 +519,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     errorBuilder: (context, error, stackTrace) => Container(
                       height: 160,
                       width: 140,
-                      color: const Color(0xFFF5F5F0),
+                      color: context.pageBg,
                       alignment: Alignment.center,
-                      child: const Icon(
+                      child: Icon(
                         Icons.menu_book,
-                        color: Colors.black45,
+                        color: context.textMuted,
                         size: 32,
                       ),
                     ),
@@ -541,15 +544,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
 
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      decoration: BoxDecoration(
+                        color: context.surface,
                         shape: BoxShape.circle,
                       ),
 
                       child: Icon(
                         isSaved ? Icons.favorite : Icons.favorite_border,
 
-                        color: isSaved ? Colors.red : Colors.black54,
+                        color: isSaved ? Colors.red : context.textMuted,
 
                         size: 16,
                       ),
@@ -574,14 +577,14 @@ class _HomeScreenState extends State<HomeScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
 
-              style: const TextStyle(color: Colors.black54, fontSize: 10),
+              style: TextStyle(color: context.textMuted, fontSize: 10),
             ),
 
             Text(
               '\$${book.price.toStringAsFixed(2)}',
 
-              style: const TextStyle(
-                color: Color(0xFF1E4D3B),
+              style: TextStyle(
+                color: context.brand,
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
               ),

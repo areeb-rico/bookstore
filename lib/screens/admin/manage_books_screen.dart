@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/book.dart';
 import '../../services/store_repository.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/book_editor_sheet.dart';
 
 class ManageBooksScreen extends StatefulWidget {
@@ -119,18 +120,22 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
     var items = _vis;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F1E8),
+      backgroundColor: context.pageBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F1E8),
+        backgroundColor: context.pageBg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 18),
+          icon: Icon(
+            Icons.arrow_back_ios,
+            color: context.textStrong,
+            size: 18,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Books',
           style: TextStyle(
-            color: Colors.black,
+            color: context.textStrong,
             fontWeight: FontWeight.bold,
             fontSize: 18,
           ),
@@ -166,20 +171,24 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: context.hairline),
               ),
               child: TextField(
                 controller: _searchCtl,
                 onChanged: (v) => setState(() => _q = v),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Search catalog',
-                  hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20),
+                  hintStyle: TextStyle(color: context.textMuted, fontSize: 14),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: context.textMuted,
+                    size: 20,
+                  ),
                   suffixIcon: null,
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
@@ -187,10 +196,10 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
           const SizedBox(height: 8),
           Expanded(
             child: items.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'No books found',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: context.textMuted),
                     ),
                   )
                 : ListView.builder(
@@ -203,9 +212,9 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: context.surface,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
+                          border: Border.all(color: context.hairline),
                         ),
                         child: Row(
                           children: [
@@ -248,7 +257,7 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
                                   Text(
                                     '${b.author} Â· \$${b.price.toStringAsFixed(2)} Â· ${b.category}',
                                     style: TextStyle(
-                                      color: Colors.grey.shade600,
+                                      color: context.textMuted,
                                       fontSize: 11,
                                     ),
                                   ),
@@ -256,19 +265,19 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.edit,
                                 size: 18,
-                                color: Colors.grey,
+                                color: context.textMuted,
                               ),
                               onPressed: () =>
                                   _openForm(existing: b, idx: realIdx),
                             ),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.delete_outline,
                                 size: 18,
-                                color: Colors.grey,
+                                color: context.textMuted,
                               ),
                               onPressed: () => _confirmDelete(realIdx),
                             ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'models/book.dart';
+import 'theme/app_theme.dart';
 import 'screens/auth_gate.dart';
 import 'screens/login.dart';
 import 'screens/home.dart';
@@ -198,20 +199,8 @@ class _BookStoreAppState extends State<BookStoreApp> {
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messenger,
       navigatorKey: _navigator,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'serif',
-        scaffoldBackgroundColor: const Color(0xFFF5F5F0),
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1E4D3B)),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5FAF91),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
       themeMode: dark ? ThemeMode.dark : ThemeMode.light,
       initialRoute: widget.initialRoute,
       onGenerateInitialRoutes: (route) => [

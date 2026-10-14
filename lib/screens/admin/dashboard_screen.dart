@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/book.dart';
+import '../../theme/app_theme.dart';
 import '../user_session.dart';
 import '../../services/auth_service.dart';
 import '../../services/admin_service.dart';
@@ -98,7 +99,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F1E8),
+      backgroundColor: context.pageBg,
       body: SafeArea(
         child: Column(
           children: [
@@ -140,7 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             Expanded(
               child: RefreshIndicator(
-                color: const Color(0xFF1F3A2E),
+                color: context.brand,
                 onRefresh: () async {
                   await _refreshUsers();
                 },
@@ -215,10 +216,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 16),
                       if (widget.orders.isEmpty)
-                        const Center(
+                        Center(
                           child: Text(
                             'No orders yet',
-                            style: TextStyle(color: Colors.grey),
+                            style: TextStyle(color: context.textMuted),
                           ),
                         )
                       else
@@ -244,30 +245,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             v,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1F3A2E),
+              color: context.brand,
             ),
           ),
           const SizedBox(height: 4),
-          Text(l, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          Text(l, style: TextStyle(fontSize: 12, color: context.textMuted)),
           const SizedBox(height: 8),
           Text(
             s,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: Colors.green,
+              color: context.brand,
             ),
           ),
         ],
@@ -282,13 +283,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: context.hairline),
         ),
         child: Row(
           children: [
-            Icon(i, size: 18, color: const Color(0xFF1F3A2E)),
+            Icon(i, size: 18, color: context.brand),
             const SizedBox(width: 8),
             Text(
               l,
@@ -310,9 +311,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.hairline),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -330,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 4),
               Text(
                 '${o['items']} items Â· \$${o['price']}',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                style: TextStyle(color: context.textMuted, fontSize: 11),
               ),
             ],
           ),
